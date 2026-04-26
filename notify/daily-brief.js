@@ -225,7 +225,7 @@ async function main() {
   await transporter.sendMail({
     from: `"慶良間ダイビング気象" <${GMAIL_USER}>`,
     to: TO_EMAIL,
-    subject: `🌊 今日の慶良間 コンディション【${score}/10】${dateLabel}`,
+    subject: `🌊 今日の慶良間 コンディション ${score} out of 10 ／ ${dateLabel}`,
     text: body,
   });
 
