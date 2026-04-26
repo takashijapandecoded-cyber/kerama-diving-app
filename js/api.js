@@ -1,0 +1,123 @@
+import { LOCATIONS, NASA_API_KEY } from './config.js';
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5分キャッシュ
+
+function cacheKey(name) {
+  const dateStr = new Date().toISOString().slice(0, 13); // 1時間単位
+  return `diving_cache_${name}_${dateStr}`;
+}
+
+function fromCache(name) {
+  try {
+    const raw = sessionStorage.getItem(cacheKey(name));
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function toCache(name, data) {
+  try {
+    sessionStorage.setItem(cacheKey(name), JSON.stringify({ data, ts: Date.now() }));
+  } catch { /* ストレージ制限でも無視 */ }
+}
+
+// NASA EPIC: 最新の地球衛星画像を取得
+export async function fetchEpicImage() {
+  const cached = fromCache('epic');
+  if (cached) return cached;
+
+  const res = await fetch(
+    `https://api.nasa.gov/EPIC/api/natural?api_key=${NASA_API_KEY}`
+  );
+  if (!res.ok) throw new Error('NASA EPIC API エラー');
+  const images = await res.json();
+  if (!images.length) throw new Error('EPIC 画像なし');
+
+  const img = images[0];
+  const d = img.date.slice(0, 10).replace(/-/g, '/');
+  const result = {
+    url: `https://epic.gsfc.nasa.gov/archive/natural/${d}/jpg/${img.image}.jpg`,
+    caption: img.caption,
+    date: img.date,
+  };
+  toCache('epic', result);
+  return result;
+}
+
+// Open-Meteo JMA: 那覇の天気予報（現在値 + 時刻別）
+export async function fetchWeather() {
+  const cached = fromCache('weather');
+  if (cached) return cached;
+
+  const { lat, lon } = LOCATIONS.naha;
+  const url = new URL('https://api.open-meteo.com/v1/jma');
+  url.searchParams.set('latitude', lat);
+  url.searchParams.set('longitude', lon);
+  url.searchParams.set('current', 'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode');
+  url.searchParams.set('hourly', 'temperature_2m,wind_speed_10m,weathercode,precipitation_probability');
+  url.searchParams.set('daily', 'weathercode,temperature_2m_max,wind_speed_10m_max');
+  url.searchParams.set('timezone', 'Asia/Tokyo');
+  url.searchParams.set('forecast_days', '7');
+  url.searchParams.set('wind_speed_unit', 'kmh');
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Open-Meteo 天気 API エラー');
+  const data = await res.json();
+  toCache('weather', data);
+  return data;
+}
+
+// Open-Meteo Marine: 各地点の海況（波高・うねり・潮汐）
+export async function fetchMarine(locationKey) {
+  const cacheKeyName = `marine_${locationKey}`;
+  const cached = fromCache(cacheKeyName);
+  if (cached) return cached;
+
+  const { lat, lon } = LOCATIONS[locationKey];
+  const url = new URL('https://marine-api.open-meteo.com/v1/marine');
+  url.searchParams.set('latitude', lat);
+  url.searchParams.set('longitude', lon);
+  url.searchParams.set('hourly', [
+    'wave_height',
+    'wave_direction',
+    'wave_period',
+    'swell_wave_height',
+    'swell_wave_direction',
+    'swell_wave_period',
+    'wind_wave_height',
+    'sea_level_height_msl',
+    'sea_surface_temperature',
+  ].join(','));
+  url.searchParams.set('timezone', 'Asia/Tokyo');
+  url.searchParams.set('forecast_days', '7');
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo Marine API エラー (${locationKey})`);
+  const data = await res.json();
+  toCache(cacheKeyName, data);
+  return data;
+}
+
+// 3地点＋天気＋EPICを並列取得
+export async function fetchAll() {
+  const [epicResult, weatherResult, nahaResult, routeResult, keramaResult] =
+    await Promise.allSettled([
+      fetchEpicImage(),
+      fetchWeather(),
+      fetchMarine('naha'),
+      fetchMarine('route'),
+      fetchMarine('kerama'),
+    ]);
+
+  return {
+    epic:    epicResult.status    === 'fulfilled' ? epicResult.value    : null,
+    weather: weatherResult.status === 'fulfilled' ? weatherResult.value : null,
+    naha:    nahaResult.status    === 'fulfilled' ? nahaResult.value    : null,
+    route:   routeResult.status   === 'fulfilled' ? routeResult.value   : null,
+    kerama:  keramaResult.status  === 'fulfilled' ? keramaResult.value  : null,
+  };
+}

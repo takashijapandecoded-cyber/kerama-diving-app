@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0a1628">
+  <title>慶良間ダイビング コンディション</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ページインジケーター（上部ドット） -->
+  <div id="page-dots">
+    <span class="dot active" data-page="0"></span>
+    <span class="dot"        data-page="1"></span>
+    <span class="dot"        data-page="2"></span>
+    <span class="dot"        data-page="3"></span>
+  </div>
+
+  <!-- ページラベル（上部） -->
+  <div id="page-labels">
+    <span class="plabel active" data-page="0">🌊 今日</span>
+    <span class="plabel"        data-page="1">🤿 海況</span>
+    <span class="plabel"        data-page="2">🕐 予報</span>
+    <span class="plabel"        data-page="3">📖 基準</span>
+  </div>
+
+  <!-- 横スワイプコンテナ -->
+  <div id="pages-container">
+
+    <!-- ── PAGE 0: 今日のスコア ── -->
+    <div class="page" id="page-today">
+
+      <div id="hero-bg"></div>
+      <div id="hero-overlay"></div>
+
+      <div id="bubbles">
+        <span class="bubble"></span><span class="bubble"></span>
+        <span class="bubble"></span><span class="bubble"></span>
+        <span class="bubble"></span><span class="bubble"></span>
+        <span class="bubble"></span><span class="bubble"></span>
+      </div>
+
+      <div class="page-content" id="today-content">
+        <div id="hero-location">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div id="hero-date"></div>
+
+        <!-- スコアカード -->
+        <div id="score-container">
+          <div id="score-ring-wrap">
+            <svg id="score-ring-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%"   stop-color="#22c55e"/>
+                  <stop offset="100%" stop-color="#0ea5e9"/>
+                </linearGradient>
+              </defs>
+              <circle class="ring-bg"    cx="100" cy="100" r="80"/>
+              <circle class="ring-score" cx="100" cy="100" r="80" id="score-ring-circle"/>
+              <text x="100" y="88"  class="ring-num"   id="ring-num">--</text>
+              <text x="100" y="115" class="ring-denom">/ 10</text>
+            </svg>
+          </div>
+          <div id="score-text">データ読み込み中...</div>
+          <div id="sub-scores">
+            <div class="sub-chip">
+              <div class="sub-icon">🌊</div>
+              <div class="sub-label">波</div>
+              <div class="sub-val" id="sub-wave-val">--</div>
+            </div>
+            <div class="sub-chip">
+              <div class="sub-icon">💨</div>
+              <div class="sub-label">風</div>
+              <div class="sub-val" id="sub-wind-val">--</div>
+            </div>
+            <div class="sub-chip">
+              <div class="sub-icon">☀️</div>
+              <div class="sub-label">天気</div>
+              <div class="sub-val" id="sub-weather-val">--</div>
+            </div>
+            <div class="sub-chip">
+              <div class="sub-icon">〰️</div>
+              <div class="sub-label">うねり</div>
+              <div class="sub-val" id="sub-swell-val">--</div>
+            </div>
+            <div class="sub-chip">
+              <div class="sub-icon">🌡</div>
+              <div class="sub-label">気温</div>
+              <div class="sub-val" id="sub-temp-val">--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3地点カード -->
+        <div id="conditions-grid">
+          <div class="condition-card" id="card-naha">
+            <div class="card-title">📍 那覇港沖</div>
+            <div class="card-subtitle">出港条件</div>
+            <div class="card-body skeleton-loading">
+              <div class="card-row"><span class="label">波高</span><span class="value" id="naha-wave">--</span></div>
+              <div class="card-row"><span class="label">風速</span><span class="value" id="naha-wind">--</span></div>
+              <div class="card-row"><span class="label">天気</span><span class="value" id="naha-weather">--</span></div>
+            </div>
+          </div>
+          <div class="condition-card" id="card-route">
+            <div class="card-title">⛵ 航路中間</div>
+            <div class="card-subtitle">渡る間の海況</div>
+            <div class="card-body skeleton-loading">
+              <div class="card-row"><span class="label">波高</span><span class="value" id="route-wave">--</span></div>
+              <div class="card-row"><span class="label">風速</span><span class="value" id="route-wind">--</span></div>
+              <div class="card-row"><span class="label">天気</span><span class="value" id="route-weather">--</span></div>
+            </div>
+          </div>
+          <div class="condition-card" id="card-kerama">
+            <div class="card-title">🤿 慶良間沖</div>
+            <div class="card-subtitle">ダイブエリア</div>
+            <div class="card-body skeleton-loading">
+              <div class="card-row"><span class="label">波高</span><span class="value" id="kerama-wave">--</span></div>
+              <div class="card-row"><span class="label">うねり周期</span><span class="value" id="kerama-swell">--</span></div>
+              <div class="card-row"><span class="label">海水温</span><span class="value" id="kerama-sst">--</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="wind-advisory" style="display:none"></div>
+        <div id="epic-caption"></div>
+        <div id="data-info"></div>
+        <div id="swipe-hint">← スワイプで海況へ →</div>
+      </div>
+
+      <div id="hero-wave">
+        <svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0,40 C360,80 720,0 1080,40 C1260,60 1380,50 1440,40 L1440,80 L0,80 Z" fill="rgba(10,22,40,0.6)"/>
+          <path d="M0,55 C240,20 480,70 720,50 C960,30 1200,65 1440,45 L1440,80 L0,80 Z" fill="rgba(10,22,40,0.9)"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ── PAGE 1: 海況（潮汐 + 衛星画像） ── -->
+    <div class="page" id="page-marine">
+      <div class="page-content page-scroll">
+
+        <h2 class="section-title">📊 今日の潮汐（慶良間）</h2>
+        <div id="tide-info">
+          <div class="tide-badge" id="tide-high">🔼 満潮: <span>--</span></div>
+          <div class="tide-badge" id="tide-low">🔽 干潮: <span>--</span></div>
+          <div class="tide-best"  id="tide-best">⭐ ベストダイブ時間: <span>--</span></div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="tide-chart"></canvas>
+        </div>
+
+        <h2 class="section-title" style="margin-top:1.5rem">🌍 沖縄エリア 気象マップ <span class="section-note">（雲の広がり）</span></h2>
+        <div class="sat-wrap">
+          <iframe
+            src="https://embed.windy.com/embed2.html?lat=26.2&lon=127.4&zoom=7&level=surface&overlay=clouds&product=ecmwf&menu=false&message=false&marker=false&calendar=false&pressure=false&type=map&location=coordinates&detail=false&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1"
+            frameborder="0"
+            title="沖縄エリア気象マップ">
+          </iframe>
+        </div>
+        <div id="sat-caption">🌐 Windy · ECMWFモデル · 雲量オーバーレイ</div>
+
+        <div id="last-updated" style="margin-top:1rem; font-size:0.75rem; color:var(--muted); text-align:center"></div>
+      </div>
+    </div>
+
+    <!-- ── PAGE 2: 予報（週間 + 時刻別） ── -->
+    <div class="page" id="page-forecast">
+      <div class="page-content page-scroll">
+
+        <h2 class="section-title">📅 週間コンディション <span class="section-note">（お客様連絡の参考に）</span></h2>
+        <div id="calendar-grid" class="skeleton-loading"></div>
+
+        <h2 class="section-title" style="margin-top:1.5rem">🕐 時刻別予報 <span id="forecast-date" class="section-note"></span></h2>
+        <div class="table-wrap">
+          <table id="forecast-table">
+            <thead>
+              <tr>
+                <th>時刻</th><th>天気</th><th>気温</th>
+                <th>風速</th><th>波高</th><th>スコア</th>
+              </tr>
+            </thead>
+            <tbody id="forecast-tbody" class="skeleton-loading"></tbody>
+          </table>
+        </div>
+        <div id="data-sources" style="margin-top:1.5rem; font-size:0.72rem; color:var(--muted); text-align:center">
+          天気: Open-Meteo JMA ／ 海況: Open-Meteo Marine ／ 衛星: NASA EPIC
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PAGE 3: コンディション基準 ── -->
+    <div class="page" id="page-guide">
+      <div class="page-content page-scroll">
+
+        <h2 class="section-title">📖 スコア判定基準</h2>
+        <div class="guide-rows">
+          <div class="guide-row" style="border-left-color:var(--accent)">
+            <span class="guide-badge" style="color:var(--accent)">9〜10</span>
+            <div><div class="guide-label">🌊 絶好のコンディション</div><div class="guide-desc">積極的に出港推奨</div></div>
+          </div>
+          <div class="guide-row" style="border-left-color:var(--go)">
+            <span class="guide-badge" style="color:var(--go)">7〜8</span>
+            <div><div class="guide-label">✅ 良好なコンディション</div><div class="guide-desc">通常通り出港</div></div>
+          </div>
+          <div class="guide-row" style="border-left-color:#84cc16">
+            <span class="guide-badge" style="color:#84cc16">5〜6</span>
+            <div><div class="guide-label">⚠️ まずまず</div><div class="guide-desc">注意して出港、状況を見ながら</div></div>
+          </div>
+          <div class="guide-row" style="border-left-color:var(--caution)">
+            <span class="guide-badge" style="color:var(--caution)">4</span>
+            <div><div class="guide-label">⚠️ 要注意</div><div class="guide-desc">初心者客がいる場合は慎重に</div></div>
+          </div>
+          <div class="guide-row" style="border-left-color:var(--danger)">
+            <span class="guide-badge" style="color:var(--danger)">2〜3</span>
+            <div><div class="guide-label">🚫 出港困難</div><div class="guide-desc">経験者のみ、慎重な判断が必要</div></div>
+          </div>
+          <div class="guide-row" style="border-left-color:#991b1b">
+            <span class="guide-badge" style="color:#991b1b">1</span>
+            <div><div class="guide-label">⛔ キャンセル推奨</div><div class="guide-desc">安全を最優先に</div></div>
+          </div>
+        </div>
+
+        <h2 class="section-title" style="margin-top:1.5rem">⚖️ スコア計算方式</h2>
+        <div class="guide-formula">
+          <div class="formula-row"><span class="formula-factor">🌊 波高（慶良間沖）</span><span class="formula-weight">40%</span></div>
+          <div class="formula-row"><span class="formula-factor">💨 風速</span><span class="formula-weight">35%</span></div>
+          <div class="formula-row"><span class="formula-factor">☀️ 天気コード (JMA)</span><span class="formula-weight">15%</span></div>
+          <div class="formula-row"><span class="formula-factor">〰️ うねり周期</span><span class="formula-weight">10%</span></div>
+        </div>
+
+        <h2 class="section-title" style="margin-top:1.5rem">📏 判定基準値</h2>
+        <div class="guide-criteria">
+          <div class="guide-crit-title">🌊 波高</div>
+          <div class="guide-crit-row"><span>〜 0.5m</span><span class="guide-crit-score go">10点</span></div>
+          <div class="guide-crit-row"><span>〜 1.0m</span><span class="guide-crit-score go">8点</span></div>
+          <div class="guide-crit-row"><span>〜 1.5m</span><span class="guide-crit-score caution">6点</span></div>
+          <div class="guide-crit-row"><span>〜 2.0m</span><span class="guide-crit-score caution">4点</span></div>
+          <div class="guide-crit-row"><span>〜 2.5m</span><span class="guide-crit-score danger">2点</span></div>
+          <div class="guide-crit-row"><span>2.5m〜</span><span class="guide-crit-score danger">0点</span></div>
+
+          <div class="guide-crit-title" style="margin-top:0.75rem">💨 風速</div>
+          <div class="guide-crit-row"><span>〜 5 m/s</span><span class="guide-crit-score go">10点</span></div>
+          <div class="guide-crit-row"><span>〜 10 m/s</span><span class="guide-crit-score go">8点</span></div>
+          <div class="guide-crit-row"><span>〜 15 m/s</span><span class="guide-crit-score caution">6点</span></div>
+          <div class="guide-crit-row"><span>〜 20 m/s</span><span class="guide-crit-score caution">3点</span></div>
+          <div class="guide-crit-row"><span>〜 25 m/s</span><span class="guide-crit-score danger">1点</span></div>
+          <div class="guide-crit-row"><span>25 m/s〜</span><span class="guide-crit-score danger">0点</span></div>
+
+          <div class="guide-crit-title" style="margin-top:0.75rem">〰️ うねり周期</div>
+          <div class="guide-crit-row"><span>10秒〜</span><span class="guide-crit-score go">10点</span></div>
+          <div class="guide-crit-row"><span>8〜10秒</span><span class="guide-crit-score go">7点</span></div>
+          <div class="guide-crit-row"><span>6〜8秒</span><span class="guide-crit-score caution">5点</span></div>
+          <div class="guide-crit-row"><span>〜 6秒</span><span class="guide-crit-score danger">3点</span></div>
+        </div>
+
+        <h2 class="section-title" style="margin-top:1.5rem">🔄 データ更新頻度</h2>
+        <div class="guide-updates">
+          <div class="guide-update-item">
+            <span class="guide-update-icon">🌤</span>
+            <div>
+              <div class="guide-update-name">天気予報 (JMA)</div>
+              <div class="guide-update-freq">Open-Meteo · 約1時間毎に更新</div>
+            </div>
+          </div>
+          <div class="guide-update-item">
+            <span class="guide-update-icon">🌊</span>
+            <div>
+              <div class="guide-update-name">海況・潮汐 (Marine)</div>
+              <div class="guide-update-freq">Open-Meteo Marine · 約1時間毎に更新</div>
+            </div>
+          </div>
+          <div class="guide-update-item">
+            <span class="guide-update-icon">🛰</span>
+            <div>
+              <div class="guide-update-name">NASA EPIC 地球画像</div>
+              <div class="guide-update-freq">NASA · 1〜2時間毎（1日最大24枚）</div>
+            </div>
+          </div>
+          <div class="guide-update-item">
+            <span class="guide-update-icon">📱</span>
+            <div>
+              <div class="guide-update-name">このアプリのキャッシュ</div>
+              <div class="guide-update-freq">5分間キャッシュ → ページ再読込みで最新に</div>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="section-title" style="margin-top:1.5rem">📍 監視3地点</h2>
+        <div class="guide-points">
+          <div class="guide-point">
+            <span class="guide-point-icon">📍</span>
+            <div>
+              <div class="guide-point-name">那覇港沖</div>
+              <div class="guide-point-desc">26.21°N 127.67°E ─ 出港条件の確認に使用</div>
+            </div>
+          </div>
+          <div class="guide-point">
+            <span class="guide-point-icon">⛵</span>
+            <div>
+              <div class="guide-point-name">航路中間点</div>
+              <div class="guide-point-desc">26.18°N 127.45°E ─ 渡る間の海況確認</div>
+            </div>
+          </div>
+          <div class="guide-point">
+            <span class="guide-point-icon">🤿</span>
+            <div>
+              <div class="guide-point-name">慶良間沖（ダイブエリア）</div>
+              <div class="guide-point-desc">26.20°N 127.31°E ─ スコア計算・ダイブ条件判定</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:1.5rem; font-size:0.65rem; color:var(--muted); text-align:center; padding-bottom:1rem">
+          このアプリは優くんの安全なダイビングガイド業務をサポートするために作られました 🤿
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /pages-container -->
+
+  <!-- メール通知設定ボタン -->
+  <button id="email-settings-btn" aria-label="メール通知設定">🔔</button>
+
+  <!-- メール登録モーダル -->
+  <div id="email-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>📬 メール通知設定</h3>
+        <button id="modal-close" class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <label class="modal-label" for="modal-email">メールアドレス</label>
+          <input id="modal-email" type="email" class="modal-input" placeholder="you@example.com">
+        </div>
+        <div class="modal-section">
+          <label class="modal-label" for="modal-time">配信希望時刻</label>
+          <select id="modal-time" class="modal-input">
+            <option value="04:30">04:30</option>
+            <option value="05:00" selected>05:00（デフォルト）</option>
+            <option value="05:30">05:30</option>
+            <option value="06:00">06:00</option>
+            <option value="06:30">06:30</option>
+            <option value="07:00">07:00</option>
+          </select>
+          <p class="modal-note">※ 時刻変更はGitHub Actionsのcronも要変更</p>
+        </div>
+        <details class="modal-advanced">
+          <summary>テスト送信設定 (GitHub Actions)</summary>
+          <div class="modal-section" style="margin-top:0.75rem">
+            <label class="modal-label" for="modal-repo">GitHubリポジトリ (owner/repo)</label>
+            <input id="modal-repo" type="text" class="modal-input" placeholder="username/diving-app">
+          </div>
+          <div class="modal-section">
+            <label class="modal-label" for="modal-pat">Personal Access Token</label>
+            <input id="modal-pat" type="password" class="modal-input" placeholder="ghp_xxxx...">
+            <p class="modal-note">※ <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">こちら</a>で発行（workflow権限が必要）</p>
+          </div>
+          <button id="modal-test" class="modal-btn modal-btn-secondary">🚀 テストメールを今すぐ送信</button>
+        </details>
+        <div id="modal-status" class="modal-status"></div>
+        <button id="modal-save" class="modal-btn modal-btn-primary">💾 設定を保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+  <script type="module">
+    import { initEmailModal } from './js/email-modal.js';
+    initEmailModal();
+  </script>
+  <script>
+    const container = document.getElementById('pages-container');
+    const dots   = document.querySelectorAll('.dot');
+    const labels = document.querySelectorAll('.plabel');
+    container.addEventListener('scroll', () => {
+      const page = Math.round(container.scrollLeft / container.clientWidth);
+      dots.forEach((d, i)   => d.classList.toggle('active', i === page));
+      labels.forEach((l, i) => l.classList.toggle('active', i === page));
+    }, { passive: true });
+
+    [...dots, ...labels].forEach(el => {
+      el.addEventListener('click', () => {
+        const p = +el.dataset.page;
+        container.scrollTo({ left: p * container.clientWidth, behavior: 'smooth' });
+      });
+    });
+  </script>
+</body>
+</html>

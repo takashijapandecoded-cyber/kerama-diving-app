@@ -1,0 +1,39 @@
+name: 毎朝5時 ダイビングコンディション通知
+
+on:
+  # 毎日 20:00 UTC = 翌朝 05:00 JST
+  schedule:
+    - cron: '0 20 * * *'
+  # 手動でテスト実行もできるようにする
+  workflow_dispatch:
+    inputs:
+      test_email:
+        description: 'テスト送信先メール（省略時はTO_EMAILへ）'
+        required: false
+        default: ''
+
+jobs:
+  send-morning-brief:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 依存パッケージをインストール
+        working-directory: notify
+        run: npm install
+
+      - name: 朝のサマリーをメール送信
+        working-directory: notify
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TO_EMAIL:           ${{ secrets.TO_EMAIL }}
+          TEST_EMAIL:         ${{ github.event.inputs.test_email }}
+          APP_URL:            ${{ secrets.APP_URL }}
+        run: node daily-brief.js

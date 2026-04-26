@@ -1,0 +1,923 @@
+/* ── カスタムプロパティ ─────────────────────────────────── */
+:root {
+  --bg:       #0a1628;
+  --surface:  #1a2744;
+  --surface2: #243358;
+  --accent:   #00b4d8;
+  --text:     #e2e8f0;
+  --muted:    #94a3b8;
+  --border:   rgba(148,163,184,0.15);
+  --go:       #22c55e;
+  --caution:  #f59e0b;
+  --danger:   #ef4444;
+  --radius:   12px;
+}
+
+/* ── ベース ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* ── ページインジケーター（上部） ───────────────────────── */
+#page-dots {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  cursor: pointer;
+  transition: background 0.3s, transform 0.3s;
+}
+.dot.active {
+  background: var(--accent);
+  transform: scale(1.4);
+}
+
+/* ページラベル */
+#page-labels {
+  position: fixed;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  gap: 1.5rem;
+}
+
+.plabel {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  transition: color 0.3s;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.plabel.active { color: rgba(255,255,255,0.9); }
+
+/* ── 横スワイプコンテナ ──────────────────────────────────── */
+#pages-container {
+  display: flex;
+  width: 100%;
+  height: 100svh;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+#pages-container::-webkit-scrollbar { display: none; }
+
+/* ── 各ページ ────────────────────────────────────────────── */
+.page {
+  min-width: 100vw;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100svh;
+  scroll-snap-align: start;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* スクロール可能なページ（2・3ページ目） */
+.page-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ページ内コンテンツ共通 */
+.page-content {
+  position: relative;
+  z-index: 2;
+  padding: 60px 1rem 2rem;
+  height: 100%;
+}
+
+/* ── PAGE 1: ヒーロー ────────────────────────────────────── */
+#hero-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-color: #0a1628;
+  transform: scale(1.05);
+  transition: background-image 1s ease;
+}
+
+#hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    rgba(0,20,50,0.5) 0%,
+    rgba(0,40,80,0.65) 40%,
+    rgba(10,22,40,0.92) 100%
+  );
+}
+
+/* 泡アニメーション */
+#bubbles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes bubble-rise {
+  0%   { transform: translateY(0) scale(1);   opacity: 0; }
+  10%  { opacity: 0.45; }
+  90%  { opacity: 0.2; }
+  100% { transform: translateY(-110vh) scale(1.6); opacity: 0; }
+}
+
+.bubble {
+  position: absolute;
+  bottom: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.55), rgba(0,180,216,0.15));
+  border: 1px solid rgba(0,180,216,0.3);
+  animation: bubble-rise linear infinite;
+}
+.bubble:nth-child(1) { width:10px; height:10px; left:10%; animation-duration:9s;  animation-delay:0s;   }
+.bubble:nth-child(2) { width:16px; height:16px; left:22%; animation-duration:13s; animation-delay:2s;   }
+.bubble:nth-child(3) { width:8px;  height:8px;  left:38%; animation-duration:8s;  animation-delay:4s;   }
+.bubble:nth-child(4) { width:14px; height:14px; left:52%; animation-duration:11s; animation-delay:1s;   }
+.bubble:nth-child(5) { width:6px;  height:6px;  left:65%; animation-duration:7s;  animation-delay:3s;   }
+.bubble:nth-child(6) { width:18px; height:18px; left:75%; animation-duration:14s; animation-delay:0.5s; }
+.bubble:nth-child(7) { width:9px;  height:9px;  left:85%; animation-duration:10s; animation-delay:5s;   }
+.bubble:nth-child(8) { width:12px; height:12px; left:92%; animation-duration:12s; animation-delay:2.5s; }
+
+/* Page1 コンテンツ配置 */
+#today-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding-top: 56px;
+  padding-bottom: 80px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+#hero-location {
+  font-size: 0.8rem;
+  color: var(--accent);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(0,180,216,0.6);
+}
+
+#hero-date {
+  font-size: 0.95rem;
+  color: rgba(226,232,240,0.7);
+  margin-top: -0.5rem;
+}
+
+/* スコアカード */
+#score-container {
+  background: rgba(10,30,60,0.55);
+  border: 1px solid rgba(0,180,216,0.35);
+  border-radius: 24px;
+  padding: 1.5rem 1.5rem 1.25rem;
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  transition: border-color 0.6s ease;
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+}
+
+/* SVG リングゲージ */
+#score-ring-wrap {
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 0.75rem;
+}
+
+#score-ring-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+  filter: drop-shadow(0 0 12px rgba(0,180,216,0.4));
+}
+
+.ring-bg    { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 14; }
+.ring-score {
+  fill: none;
+  stroke: url(#ring-grad);
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-dasharray: 502.65;
+  stroke-dashoffset: 502.65;
+  transition: stroke-dashoffset 1.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+.ring-num {
+  fill: #fff;
+  font-size: 46px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  transform: rotate(90deg);
+  transform-origin: 100px 100px;
+  font-family: 'Hiragino Kaku Gothic ProN', sans-serif;
+}
+.ring-denom {
+  fill: rgba(148,163,184,0.8);
+  font-size: 16px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  transform: rotate(90deg);
+  transform-origin: 100px 100px;
+  font-family: 'Hiragino Kaku Gothic ProN', sans-serif;
+}
+
+#score-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 1rem;
+}
+
+/* 内訳チップ */
+#sub-scores {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.sub-chip {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.4rem 0.6rem;
+  min-width: 54px;
+  text-align: center;
+}
+.sub-icon  { font-size: 1rem; line-height: 1; }
+.sub-label { font-size: 0.6rem; color: var(--muted); margin: 0.1rem 0; }
+.sub-val   { font-size: 0.85rem; font-weight: 700; }
+
+/* 3地点カード（横並び） */
+#conditions-grid {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 380px;
+}
+
+.condition-card {
+  flex: 1;
+  background: rgba(26,39,68,0.7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.6rem;
+  backdrop-filter: blur(8px);
+}
+
+.card-title    { font-size: 0.72rem; font-weight: 700; margin-bottom: 0.1rem; }
+.card-subtitle { font-size: 0.6rem; color: var(--muted); margin-bottom: 0.5rem; }
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+  gap: 0.25rem;
+}
+.card-row:last-child { border-bottom: none; }
+.label { font-size: 0.65rem; color: var(--muted); white-space: nowrap; }
+.value { font-size: 0.72rem; font-weight: 600; text-align: right; }
+
+#epic-caption {
+  font-size: 0.68rem;
+  color: rgba(148,163,184,0.45);
+}
+
+#swipe-hint {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.25);
+  letter-spacing: 0.1em;
+  animation: pulse-hint 2.5s ease-in-out infinite;
+}
+@keyframes pulse-hint {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+
+/* ウェーブ */
+#hero-wave {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1;
+  line-height: 0;
+  pointer-events: none;
+}
+#hero-wave svg { width: 100%; height: 60px; }
+
+/* ── PAGE 1（海況）固有 ───────────────────────────────────── */
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.section-note { font-size: 0.75rem; font-weight: 400; color: var(--muted); }
+
+/* 週間カレンダー */
+#calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.cal-cell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.1rem;
+  text-align: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.cal-day   { font-size: 0.55rem; color: var(--muted); }
+.cal-num   { font-size: 0.88rem; font-weight: 700; }
+.cal-score { font-size: 0.68rem; color: var(--accent); font-weight: 600; }
+.cal-icon  { font-size: 0.78rem; }
+.cal-good    { border-color: var(--go); }
+.cal-caution { border-color: var(--caution); }
+.cal-bad     { border-color: var(--danger); }
+
+/* 潮汐 */
+#tide-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+.tide-badge {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  width: 100%;
+}
+.tide-badge span { color: var(--text); font-weight: 600; }
+.tide-best {
+  background: rgba(0,180,216,0.1);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--accent);
+  width: 100%;
+  word-break: break-word;
+}
+.tide-best span { font-weight: 700; }
+
+.chart-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  height: 200px;
+  overflow: hidden;
+}
+
+/* 時刻別テーブル */
+.table-wrap { overflow-x: auto; }
+
+#forecast-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+#forecast-table th {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+#forecast-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.td-time { font-weight: 700; color: var(--accent); }
+
+.score-chip {
+  display: inline-block;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  min-width: 1.8rem;
+  text-align: center;
+}
+
+/* 風向アドバイス */
+#wind-advisory {
+  font-size: 0.72rem;
+  color: var(--accent);
+  background: rgba(0,180,216,0.1);
+  border: 1px solid rgba(0,180,216,0.3);
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+}
+
+/* データ時刻・ソース */
+#data-info {
+  font-size: 0.62rem;
+  color: rgba(255,255,255,0.28);
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+#data-info strong { color: rgba(255,255,255,0.5); }
+
+/* ── メール設定フローティングボタン ─────────────────────── */
+#email-settings-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 20px;
+  z-index: 200;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-size: 1.3rem;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+  transition: transform 0.2s, background 0.2s;
+}
+#email-settings-btn:hover { transform: scale(1.1); background: var(--accent); }
+
+/* ── メール登録モーダル ───────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.hidden { display: none; }
+
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1.5rem 1.25rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+.modal-header h3 { font-size: 1rem; font-weight: 700; }
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.3rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.modal-section { margin-bottom: 0.9rem; }
+.modal-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 0.3rem;
+}
+.modal-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: inherit;
+  -webkit-appearance: none;
+}
+.modal-input:focus { outline: none; border-color: var(--accent); }
+
+.modal-note { font-size: 0.65rem; color: var(--muted); margin-top: 0.3rem; }
+.modal-note a { color: var(--accent); text-decoration: none; }
+
+.modal-advanced {
+  margin: 0.75rem 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+.modal-advanced summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--muted);
+  list-style: none;
+  user-select: none;
+}
+.modal-advanced summary::-webkit-details-marker { display: none; }
+.modal-advanced summary::before { content: '▶ '; font-size: 0.65rem; }
+.modal-advanced[open] summary::before { content: '▼ '; }
+
+.modal-status {
+  font-size: 0.8rem;
+  min-height: 1.4rem;
+  margin-bottom: 0.6rem;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.modal-btn {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: opacity 0.2s;
+}
+.modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.modal-btn-primary { background: var(--accent); color: #fff; }
+.modal-btn-secondary {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  margin-top: 0.6rem;
+  margin-bottom: 0;
+  padding: 0.6rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  width: 100%;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* 5チップ対応（気温追加） */
+#sub-scores {
+  flex-wrap: wrap;
+  row-gap: 0.4rem;
+}
+.sub-chip {
+  min-width: 48px;
+  padding: 0.4rem 0.45rem;
+}
+
+/* 衛星画像 */
+.sat-wrap {
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  height: 280px;
+}
+.sat-wrap img    { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sat-wrap iframe { width: 100%; height: 100%; border: none; display: block; }
+
+#sat-caption {
+  font-size: 0.65rem;
+  color: rgba(148,163,184,0.5);
+  text-align: center;
+  margin-top: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ── コンディション基準ページ（Page 4） ─────────────────── */
+.guide-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.guide-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+
+.guide-badge {
+  font-size: 0.95rem;
+  font-weight: 800;
+  min-width: 2.8rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.guide-label { font-size: 0.85rem; font-weight: 700; }
+.guide-desc  { font-size: 0.67rem; color: var(--muted); margin-top: 0.1rem; }
+
+.guide-formula {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.formula-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.3rem 0;
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--border);
+}
+.formula-row:last-child { border-bottom: none; }
+.formula-factor { color: var(--text); }
+.formula-weight { font-weight: 800; color: var(--accent); }
+
+.guide-criteria {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.guide-crit-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 0.4rem;
+}
+
+.guide-crit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.22rem 0;
+  font-size: 0.78rem;
+  border-bottom: 1px solid var(--border);
+}
+.guide-crit-row:last-child { border-bottom: none; }
+
+.guide-crit-score {
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+.guide-crit-score.go      { background: rgba(34,197,94,0.15);  color: var(--go); }
+.guide-crit-score.caution { background: rgba(245,158,11,0.15); color: var(--caution); }
+.guide-crit-score.danger  { background: rgba(239,68,68,0.15);  color: var(--danger); }
+
+.guide-updates,
+.guide-points {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.guide-update-item,
+.guide-point {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+
+.guide-update-icon,
+.guide-point-icon { font-size: 1.1rem; line-height: 1.4; flex-shrink: 0; }
+
+.guide-update-name,
+.guide-point-name { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.1rem; }
+
+.guide-update-freq,
+.guide-point-desc { font-size: 0.68rem; color: var(--muted); }
+
+/* Page 2・3・4 共通 */
+#page-marine .page-content,
+#page-forecast .page-content,
+#page-guide .page-content {
+  background: var(--bg);
+  min-height: 100%;
+}
+
+/* ── スケルトンローディング ──────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+.skeleton-loading {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: 6px;
+  min-height: 60px;
+  color: transparent !important;
+}
+.skeleton-loading * { visibility: hidden; }
+
+/* ══════════════════════════════════════════════════════════════
+   ✨ リッチ仕上げ層 — 全体のビジュアルをもう一段引き上げる
+══════════════════════════════════════════════════════════════ */
+
+/* ── ヒーローオーバーレイをより劇的に ──────────────────────── */
+#page-today .hero-overlay {
+  background: linear-gradient(
+    180deg,
+    rgba(0,12,35,0.18)  0%,
+    rgba(0,25,60,0.50) 28%,
+    rgba(5,15,38,0.82) 65%,
+    rgba(8,20,40,0.97) 100%
+  );
+}
+
+/* ── スコアリングのグロー点滅アニメ ────────────────────────── */
+@keyframes ring-glow-pulse {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(0,180,216,0.4)); }
+  50%       { filter: drop-shadow(0 0 18px rgba(0,180,216,0.9))
+                       drop-shadow(0 0 36px rgba(0,180,216,0.35)); }
+}
+#score-ring-svg { animation: ring-glow-pulse 3s ease-in-out infinite; }
+
+/* ── スコアカードのグラスモーフィズム強化 ──────────────────── */
+#score-container {
+  box-shadow:
+    0 8px 40px rgba(0,0,0,0.60),
+    0 0 80px rgba(0,180,216,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.13),
+    inset 0 -1px 0 rgba(0,180,216,0.14);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+
+/* ── サブチップをグラデーション背景で立体感 ────────────────── */
+.sub-chip {
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.09) 0%,
+    rgba(255,255,255,0.03) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.sub-chip:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 14px rgba(0,0,0,0.4); }
+
+/* ── コンディションカード ───────────────────────────────────── */
+.condition-card {
+  background: linear-gradient(
+    160deg,
+    rgba(26,39,68,0.82) 0%,
+    rgba(12,22,48,0.78) 100%
+  );
+  box-shadow:
+    0 4px 20px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.07);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.condition-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.09); }
+
+/* ── カレンダーセル — スコア別グラデーション光彩 ───────────── */
+.cal-good {
+  background: linear-gradient(160deg, rgba(34,197,94,0.18), rgba(34,197,94,0.06));
+  box-shadow: inset 0 0 0 1px rgba(34,197,94,0.30), 0 2px 8px rgba(34,197,94,0.12);
+}
+.cal-caution {
+  background: linear-gradient(160deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06));
+  box-shadow: inset 0 0 0 1px rgba(245,158,11,0.30), 0 2px 8px rgba(245,158,11,0.10);
+}
+.cal-bad {
+  background: linear-gradient(160deg, rgba(239,68,68,0.18), rgba(239,68,68,0.06));
+  box-shadow: inset 0 0 0 1px rgba(239,68,68,0.28), 0 2px 8px rgba(239,68,68,0.10);
+}
+
+/* ── 予報テーブル — 交互行＋ホバー ─────────────────────────── */
+#forecast-table tr:nth-child(even) td { background: rgba(255,255,255,0.025); }
+#forecast-table tr:hover td { background: rgba(0,180,216,0.07); transition: background 0.12s; }
+
+/* ── 潮汐バッジにグラデーション ─────────────────────────────── */
+.tide-badge {
+  background: linear-gradient(135deg, rgba(0,180,216,0.18), rgba(0,100,160,0.10));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 10px rgba(0,0,0,0.25);
+}
+
+/* ── 潮汐チャートラップに奥行き ─────────────────────────────── */
+.chart-wrap {
+  box-shadow: 0 6px 30px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+/* ── ページ2〜4 — 下方向にフェードアウトする深海グラデーション */
+#page-marine  .page-content,
+#page-forecast .page-content,
+#page-guide   .page-content {
+  background: linear-gradient(180deg, var(--bg) 0%, #050d1e 100%);
+}
+
+/* ── ガイドセクションのカード化 ─────────────────────────────── */
+.guide-row {
+  background: linear-gradient(
+    150deg,
+    rgba(26,39,68,0.75) 0%,
+    rgba(12,22,48,0.65) 100%
+  );
+  box-shadow: 0 3px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.guide-update-item,
+.guide-point {
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.05);
+  transition: transform 0.15s ease;
+}
+.guide-update-item:hover,
+.guide-point:hover { transform: translateX(3px); }
+
+/* ── 🔔ベルボタン — 拡張する輪のパルスアニメ ────────────────── */
+@keyframes btn-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(0,180,216,0.55), 0 4px 20px rgba(0,0,0,0.45); }
+  60%  { box-shadow: 0 0 0 10px rgba(0,180,216,0),    0 4px 20px rgba(0,0,0,0.45); }
+  100% { box-shadow: 0 0 0 0   rgba(0,180,216,0),    0 4px 20px rgba(0,0,0,0.45); }
+}
+#email-settings-btn { animation: btn-pulse 2.8s ease-out infinite; }
+
+/* ── セクションタイトルに下線アクセント ─────────────────────── */
+.section-title {
+  position: relative;
+  padding-bottom: 0.45rem;
+}
+.section-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 2rem;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+
+/* ── データ情報バーに微妙な境界線 ───────────────────────────── */
+#data-info {
+  border-top: 1px solid rgba(0,180,216,0.15);
+  border-bottom: 1px solid rgba(0,180,216,0.10);
+  background: linear-gradient(90deg, rgba(0,25,60,0.0), rgba(0,180,216,0.04), rgba(0,25,60,0.0));
+}
+
+/* ── ナビゲーションドット — アクティブ時にグロー ────────────── */
+.dot.active {
+  box-shadow: 0 0 8px rgba(0,180,216,0.7), 0 0 16px rgba(0,180,216,0.35);
+}
+
+/* ── フッターを微妙にリッチに ────────────────────────────────── */
+footer {
+  background: linear-gradient(180deg, transparent, rgba(0,180,216,0.04));
+  border-top: 1px solid rgba(0,180,216,0.12);
+}

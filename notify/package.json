@@ -1,0 +1,12 @@
+{
+  "name": "diving-morning-brief",
+  "version": "1.0.0",
+  "description": "優くんへの毎朝5時ダイビングコンディション通知",
+  "type": "module",
+  "scripts": {
+    "send": "node daily-brief.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.13"
+  }
+}
