@@ -706,6 +706,13 @@ body {
 }
 .guide-crit-row:last-child { border-bottom: none; }
 
+.wind-dir {
+  font-size: 0.68rem;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .guide-crit-score {
   font-weight: 700;
   padding: 0.1rem 0.5rem;

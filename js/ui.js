@@ -306,6 +306,7 @@ export function renderForecastTable(weather, kerama) {
   const wTimes  = weather.hourly.time;
   const wTemps  = weather.hourly.temperature_2m;
   const wWinds  = weather.hourly.wind_speed_10m;
+  const wDirs   = weather.hourly.wind_direction_10m;
   const wCodes  = weather.hourly.weathercode;
   const mTimes  = kerama.hourly.time;
   const mWaves  = kerama.hourly.wave_height;
@@ -340,7 +341,8 @@ export function renderForecastTable(weather, kerama) {
     const icon = getWeatherIcon(wCodes[i] ?? 0);
     const { color } = scoreLabel(score);
 
-    acc.push({ time: t.slice(11, 16), icon, temp: wTemps[i], wind: wWinds[i], wave, score, color });
+    const compass = wDirs?.[i] != null ? degToCompass(wDirs[i]) : '';
+    acc.push({ time: t.slice(11, 16), icon, temp: wTemps[i], wind: wWinds[i], dir: compass, wave, score, color });
     return acc;
   }, []);
 
@@ -349,7 +351,7 @@ export function renderForecastTable(weather, kerama) {
       <td class="td-time">${r.time}</td>
       <td>${r.icon?.emoji ?? '--'}</td>
       <td>${r.temp?.toFixed(0) ?? '--'}℃</td>
-      <td>${r.wind?.toFixed(0) ?? '--'} km/h</td>
+      <td>${r.wind?.toFixed(0) ?? '--'} km/h<br><span class="wind-dir">${r.dir}</span></td>
       <td>${r.wave != null ? r.wave.toFixed(1) + ' m' : '--'}</td>
       <td><span class="score-chip" style="background:${r.color}">${r.score}</span></td>
     </tr>

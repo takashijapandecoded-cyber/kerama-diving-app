@@ -58,7 +58,7 @@ export async function fetchWeather() {
   url.searchParams.set('latitude', lat);
   url.searchParams.set('longitude', lon);
   url.searchParams.set('current', 'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode');
-  url.searchParams.set('hourly', 'temperature_2m,wind_speed_10m,weathercode,precipitation_probability');
+  url.searchParams.set('hourly', 'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode,precipitation_probability');
   url.searchParams.set('daily', 'weathercode,temperature_2m_max,wind_speed_10m_max');
   url.searchParams.set('timezone', 'Asia/Tokyo');
   url.searchParams.set('forecast_days', '7');
