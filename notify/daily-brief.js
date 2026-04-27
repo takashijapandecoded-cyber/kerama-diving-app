@@ -189,7 +189,11 @@ ${hourRows.join('\n')}
 ${weekly}
 ${urlLine}
 ---
+
+
 Don't forget anything! Have a safe and fun dive! 🤿🌊
+
+
 このメールはGitHub Actionsで毎朝5時に自動送信されています。
 `;
 }
