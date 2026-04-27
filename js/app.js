@@ -36,11 +36,18 @@ function calcSubScores({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
   };
 }
 
-async function main() {
-  const { epic, weather, naha, route, kerama } = await fetchAll();
+// データの「署名」を作る（スコア+波高+風速を文字列化）
+function dataSignature(weather, kerama) {
+  const wave  = kerama?.hourly.wave_height?.[0]      ?? 0;
+  const wind  = weather?.current?.wind_speed_10m     ?? 0;
+  const code  = weather?.current?.weathercode        ?? 0;
+  const swell = kerama?.hourly.swell_wave_period?.[0] ?? 0;
+  return `${wave.toFixed(1)}_${wind.toFixed(0)}_${code}_${swell}`;
+}
 
+function renderAll(epic, weather, naha, route, kerama) {
   const currentWave  = kerama?.hourly.wave_height?.[0]       ?? 1.0;
-  const currentWind  = (weather?.current?.wind_speed_10m ?? 10) / 3.6; // m/s
+  const currentWind  = (weather?.current?.wind_speed_10m ?? 10) / 3.6;
   const currentCode  = weather?.current?.weathercode          ?? 0;
   const currentSwell = kerama?.hourly.swell_wave_period?.[0]  ?? 8;
 
@@ -55,6 +62,33 @@ async function main() {
   renderCalendar(weather, kerama);
   renderForecastTable(weather, kerama);
   renderFooter();
+}
+
+async function main() {
+  const data = await fetchAll();
+  let currentSig = dataSignature(data.weather, data.kerama);
+  renderAll(data.epic, data.weather, data.naha, data.route, data.kerama);
+
+  // 30分ごとに静かに新データを確認
+  const updateBtn = document.getElementById('update-btn');
+  let latestData  = data;
+
+  setInterval(async () => {
+    try {
+      const fresh    = await fetchAll();
+      const freshSig = dataSignature(fresh.weather, fresh.kerama);
+      if (freshSig !== currentSig) {
+        latestData = fresh;
+        updateBtn.classList.remove('hidden'); // ぴこぴこ出現！
+      }
+    } catch { /* ネットエラーは無視 */ }
+  }, 30 * 60 * 1000); // 30分
+
+  updateBtn.addEventListener('click', () => {
+    currentSig = dataSignature(latestData.weather, latestData.kerama);
+    renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama);
+    updateBtn.classList.add('hidden');
+  });
 }
 
 main().catch(err => {
