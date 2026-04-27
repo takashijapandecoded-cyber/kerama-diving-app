@@ -19,8 +19,8 @@ async function fetchWeather() {
   const p = url.searchParams;
   p.set('latitude',   LOCATIONS.naha.lat);
   p.set('longitude',  LOCATIONS.naha.lon);
-  p.set('current',    'temperature_2m,wind_speed_10m,weathercode');
-  p.set('hourly',     'temperature_2m,wind_speed_10m,weathercode');
+  p.set('current',    'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode');
+  p.set('hourly',     'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode');
   p.set('daily',      'weathercode,wind_speed_10m_max');
   p.set('timezone',   'Asia/Tokyo');
   p.set('forecast_days', '7');
@@ -40,6 +40,12 @@ async function fetchMarine(locKey) {
   p.set('forecast_days', '7');
   const res = await fetch(url.toString());
   return res.json();
+}
+
+// ── 風向変換 ───────────────────────────────────────────────
+function degToCompass(deg) {
+  const dirs = ['北','北東','東','南東','南','南西','西','北西'];
+  return dirs[Math.round(deg / 45) % 8];
 }
 
 // ── スコア計算（score.js と同じロジック） ──────────────────
@@ -112,6 +118,8 @@ function weeklyScores(weather, kerama) {
 function buildEmailBody({ score, weather, naha, route, kerama, todayStr }) {
   const wCode    = weather.current.weathercode;
   const windKmh  = weather.current.wind_speed_10m.toFixed(0);
+  const windDeg  = weather.current.wind_direction_10m;
+  const windDir  = windDeg != null ? degToCompass(windDeg) : '';
 
   const nahaWave   = naha.hourly.wave_height?.[0]?.toFixed(1) ?? '--';
   const routeWave  = route.hourly.wave_height?.[0]?.toFixed(1) ?? '--';
@@ -139,13 +147,15 @@ function buildEmailBody({ score, weather, naha, route, kerama, todayStr }) {
   const wTimes = weather.hourly.time;
   const wTemps = weather.hourly.temperature_2m;
   const wWinds = weather.hourly.wind_speed_10m;
+  const wHDirs = weather.hourly.wind_direction_10m;
   const hourRows = wTimes.reduce((acc, t, i) => {
     if (!t.startsWith(todayStr)) return acc;
     const hr = parseInt(t.slice(11, 13));
     if (hr < 7 || hr > 16) return acc;
     const mIdx = kerama.hourly.time.indexOf(t);
     const wave = mIdx >= 0 ? kerama.hourly.wave_height[mIdx]?.toFixed(1) : '--';
-    acc.push(`  ${t.slice(11,16)}  ${wTemps[i]?.toFixed(0)}℃  風${wWinds[i]?.toFixed(0)}km/h  波${wave}m`);
+    const dir  = wHDirs?.[i] != null ? degToCompass(wHDirs[i]) : '';
+    acc.push(`  ${t.slice(11,16)}  ${wTemps[i]?.toFixed(0)}℃  風${wWinds[i]?.toFixed(0)}km/h(${dir})  波${wave}m`);
     return acc;
   }, []);
 
@@ -163,7 +173,7 @@ function buildEmailBody({ score, weather, naha, route, kerama, todayStr }) {
 ${scoreText(score)}
 
 ━━━ 3地点の状況 ━━━
-📍 那覇港沖:  波${nahaWave}m / 風${windKmh}km/h
+📍 那覇港沖:  波${nahaWave}m / 風${windKmh}km/h ${windDir}
 ⛵ 航路中間:  波${routeWave}m
 🤿 慶良間沖:  波${keramaWave}m / 海水温${sst}℃
 
@@ -179,6 +189,7 @@ ${hourRows.join('\n')}
 ${weekly}
 ${urlLine}
 ---
+Don't forget anything! Have a safe and fun dive! 🤿🌊
 このメールはGitHub Actionsで毎朝5時に自動送信されています。
 `;
 }
