@@ -1,0 +1,27 @@
+name: Vercel 自動デプロイ
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Vercel CLI インストール
+        run: npm install -g vercel@latest
+
+      - name: Vercel に本番デプロイ＆エイリアス更新
+        env:
+          VERCEL_TOKEN:      ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          DEPLOY_URL=$(vercel deploy --prod --yes --token=$VERCEL_TOKEN)
+          echo "Deployed to: $DEPLOY_URL"
+          vercel alias set "$DEPLOY_URL" kerama-diving.vercel.app --token=$VERCEL_TOKEN
+          echo "✅ kerama-diving.vercel.app に反映完了"
