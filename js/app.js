@@ -36,13 +36,12 @@ function calcSubScores({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
   };
 }
 
-// データの「署名」を作る（スコア+波高+風速を文字列化）
+// データの「署名」を作る（APIの更新タイムスタンプで判定）
 function dataSignature(weather, kerama) {
-  const wave  = kerama?.hourly.wave_height?.[0]      ?? 0;
-  const wind  = weather?.current?.wind_speed_10m     ?? 0;
-  const code  = weather?.current?.weathercode        ?? 0;
-  const swell = kerama?.hourly.swell_wave_period?.[0] ?? 0;
-  return `${wave.toFixed(1)}_${wind.toFixed(0)}_${code}_${swell}`;
+  const t1 = weather?.current?.time ?? '';
+  const t2 = kerama?.hourly?.time?.[0] ?? '';
+  // タイムスタンプが変わった＝新しいデータが来た
+  return `${t1}_${t2}`;
 }
 
 function renderAll(epic, weather, naha, route, kerama) {
@@ -82,7 +81,7 @@ async function main() {
         updateBtn.classList.remove('hidden'); // ぴこぴこ出現！
       }
     } catch { /* ネットエラーは無視 */ }
-  }, 30 * 60 * 1000); // 30分
+  }, 10 * 60 * 1000); // 10分ごとにチェック
 
   updateBtn.addEventListener('click', () => {
     currentSig = dataSignature(latestData.weather, latestData.kerama);
