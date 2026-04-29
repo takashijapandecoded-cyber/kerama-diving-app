@@ -68,11 +68,12 @@ async function main() {
   let currentSig = dataSignature(data.weather, data.kerama);
   renderAll(data.epic, data.weather, data.naha, data.route, data.kerama);
 
-  // 30分ごとに静かに新データを確認
   const updateBtn = document.getElementById('update-btn');
   let latestData  = data;
+  let lastChecked = Date.now();
 
-  setInterval(async () => {
+  // 新データを確認して、変化あればボタンを出す
+  async function checkForUpdate() {
     try {
       const fresh    = await fetchAll();
       const freshSig = dataSignature(fresh.weather, fresh.kerama);
@@ -80,8 +81,22 @@ async function main() {
         latestData = fresh;
         updateBtn.classList.remove('hidden'); // ぴこぴこ出現！
       }
+      lastChecked = Date.now();
     } catch { /* ネットエラーは無視 */ }
-  }, 10 * 60 * 1000); // 10分ごとにチェック
+  }
+
+  // 10分ごとにバックグラウンドでチェック
+  setInterval(checkForUpdate, 10 * 60 * 1000);
+
+  // モバイル対応: 画面に戻ってきたとき（スリープ復帰・アプリ切り替え後）も即チェック
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // 最後のチェックから5分以上経っていれば再チェック
+      if (Date.now() - lastChecked > 5 * 60 * 1000) {
+        checkForUpdate();
+      }
+    }
+  });
 
   updateBtn.addEventListener('click', () => {
     currentSig = dataSignature(latestData.weather, latestData.kerama);
