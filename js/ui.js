@@ -1,4 +1,4 @@
-import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, bestDiveWindows } from './score.js';
+import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods } from './score.js';
 import { getWeatherIcon } from '../assets/weather-icons.js';
 import { CALENDAR_THRESHOLD } from './config.js';
 
@@ -238,9 +238,11 @@ export function renderTideChart(kerama) {
   document.getElementById('tide-low').innerHTML =
     `🔽 干潮: ${lows.map(p => `<span>${fmtTime(p.time)} (${p.height.toFixed(1)}m)</span>`).join('  ') || '<span>--</span>'}`;
 
-  const windows = bestDiveWindows(tPeaks);
+  const periods    = tidePeriods(tPeaks);
+  const risingStr  = periods.filter(p => p.type === 'rising') .map(p => `${p.from} → ${p.to}`).join('  /  ') || '--';
+  const fallingStr = periods.filter(p => p.type === 'falling').map(p => `${p.from} → ${p.to}`).join('  /  ') || '--';
   document.getElementById('tide-best').innerHTML =
-    `⭐ ベストダイブ時間: <span>${windows.join('  /  ') || '--'}</span>`;
+    `🔼 上げ潮帯: <span>${risingStr}</span><br>🔽 下げ潮帯: <span>${fallingStr}</span>`;
 
   // Chart.js グラフ
   const ctx = document.getElementById('tide-chart').getContext('2d');

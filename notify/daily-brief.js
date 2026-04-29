@@ -136,12 +136,19 @@ function buildEmailBody({ score, weather, naha, route, kerama, todayStr }) {
   const highs = todayPeaks.filter(p => p.type === 'high');
   const lows  = todayPeaks.filter(p => p.type === 'low');
 
-  const bestWindows = highs.map(p => {
-    const t = new Date(p.time);
-    const from = new Date(t - 3600000);
-    const to   = new Date(t + 3600000);
-    return `${fmtTime(from.toISOString())}〜${fmtTime(to.toISOString())}`;
-  });
+  // 上げ潮・下げ潮の時間帯を連続するピークペアから算出
+  const tPeriods = [];
+  for (let i = 0; i < todayPeaks.length - 1; i++) {
+    const from = todayPeaks[i];
+    const to   = todayPeaks[i + 1];
+    if (from.type === 'low' && to.type === 'high') {
+      tPeriods.push({ type: 'rising',  from: fmtTime(from.time), to: fmtTime(to.time) });
+    } else if (from.type === 'high' && to.type === 'low') {
+      tPeriods.push({ type: 'falling', from: fmtTime(from.time), to: fmtTime(to.time) });
+    }
+  }
+  const risingStr  = tPeriods.filter(p => p.type === 'rising') .map(p => `${p.from}→${p.to}`).join(' / ') || '--';
+  const fallingStr = tPeriods.filter(p => p.type === 'falling').map(p => `${p.from}→${p.to}`).join(' / ') || '--';
 
   // 時刻別予報（7〜16時）
   const wTimes = weather.hourly.time;
@@ -180,7 +187,8 @@ ${scoreText(score)}
 ━━━ 今日の潮汐（慶良間） ━━━
 🔼 満潮: ${highs.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
 🔽 干潮: ${lows.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
-⭐ ベストダイブ時間: ${bestWindows.join(' / ') || '--'}
+🔼 上げ潮帯: ${risingStr}（干潮→満潮）
+🔽 下げ潮帯: ${fallingStr}（満潮→干潮）
 
 ━━━ 時刻別予報（7:00〜16:00） ━━━
 ${hourRows.join('\n')}

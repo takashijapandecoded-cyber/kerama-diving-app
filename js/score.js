@@ -87,29 +87,18 @@ export function todayPeaks(peaks) {
   return peaks.filter(p => p.time.startsWith(todayStr.slice(0, 10)));
 }
 
-// ベストダイブ時間帯: 満潮前後1時間（日中のみ 6:00〜18:00）
-export function bestDiveWindows(peaks) {
-  return peaks
-    .filter(p => p.type === 'high')
-    .filter(p => {
-      const h = parseInt(p.time.slice(11, 13));
-      return h >= 6 && h <= 17;
-    })
-    .map(p => {
-      const t    = new Date(p.time);
-      const from = new Date(t.getTime() - 60 * 60 * 1000);
-      const to   = new Date(t.getTime() + 60 * 60 * 1000);
-      const fromStr = fmt(from);
-      const toStr   = fmt(to);
-      const clampFrom = parseInt(fromStr) < 6  ? '06:00' : fromStr;
-      const clampTo   = parseInt(toStr)   > 18 ? '18:00' : toStr;
-      return `${clampFrom}〜${clampTo}`;
-    });
-}
-
-function fmt(d) {
-  return d.toLocaleTimeString('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    hour: '2-digit', minute: '2-digit',
-  });
+// 連続するピークペアから上げ潮・下げ潮の時間帯を返す
+// { type: 'rising'|'falling', from: 'HH:MM', to: 'HH:MM' }[]
+export function tidePeriods(peaks) {
+  const periods = [];
+  for (let i = 0; i < peaks.length - 1; i++) {
+    const from = peaks[i];
+    const to   = peaks[i + 1];
+    if (from.type === 'low' && to.type === 'high') {
+      periods.push({ type: 'rising',  from: from.time.slice(11, 16), to: to.time.slice(11, 16) });
+    } else if (from.type === 'high' && to.type === 'low') {
+      periods.push({ type: 'falling', from: from.time.slice(11, 16), to: to.time.slice(11, 16) });
+    }
+  }
+  return periods;
 }
