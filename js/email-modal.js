@@ -1,12 +1,21 @@
 const STORAGE_KEY = 'diving_email_settings';
 
 function loadSettings() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? {}; }
-  catch { return {}; }
+  try {
+    const base = JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? {};
+    // PATはsessionStorageから読み込む
+    const pat = sessionStorage.getItem(STORAGE_KEY + '_pat') ?? '';
+    return { ...base, pat };
+  } catch { return {}; }
 }
 
 function saveSettings(s) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  // PATはsessionStorageに保存し、それ以外はlocalStorageに保存
+  const { pat, ...rest } = s;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+  if (pat !== undefined) {
+    sessionStorage.setItem(STORAGE_KEY + '_pat', pat);
+  }
 }
 
 async function triggerWorkflowDispatch(email, repo, token) {

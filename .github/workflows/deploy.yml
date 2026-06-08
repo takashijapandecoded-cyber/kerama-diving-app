@@ -22,7 +22,7 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
         run: |
-          DEPLOY_URL=$(vercel deploy --prod --yes --token=$VERCEL_TOKEN)
+          DEPLOY_URL=$(vercel deploy --prod --yes)
           echo "Deployed to: $DEPLOY_URL"
-          vercel alias set "$DEPLOY_URL" kerama-diving.vercel.app --token=$VERCEL_TOKEN
+          vercel alias set "$DEPLOY_URL" kerama-diving.vercel.app
           echo "✅ kerama-diving.vercel.app に反映完了"

@@ -18,6 +18,7 @@ export const LOCATIONS = {
 };
 
 // NASA EPIC API キー（無料のDEMO_KEYを使用）
+// DEMO_KEYは日40回の制限あり。本番では https://api.nasa.gov で無料APIキーを取得してGitHub Secretsに設定推奨
 export const NASA_API_KEY = 'DEMO_KEY';
 
 // スコア計算のしきい値

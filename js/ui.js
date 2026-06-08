@@ -5,6 +5,12 @@ import { CALENDAR_THRESHOLD } from './config.js';
 // SVGリングの円周（r=80）
 const CIRCUMFERENCE = 2 * Math.PI * 80; // ≈ 502.65
 
+function findCurrentHourIndex(times) {
+  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
+  const idx = times.findIndex(t => t.startsWith(nowStr));
+  return idx >= 0 ? idx : 0;
+}
+
 // 風向（度数）→ 8方位ラベル
 function degToCompass(deg) {
   const dirs = ['北','北東','東','南東','南','南西','西','北西'];
@@ -37,6 +43,21 @@ export function renderHero(epic, score, subScores) {
 
   if (score == null) return;
   const { text, color } = scoreLabel(score);
+
+  // 出港判断バナー
+  const banner = document.getElementById('go-nogo-banner');
+  if (banner) {
+    if (score >= 7) {
+      banner.textContent = '✅ 出港OK';
+      banner.className = 'banner-go';
+    } else if (score >= 4) {
+      banner.textContent = '⚠️ 要確認';
+      banner.className = 'banner-caution';
+    } else {
+      banner.textContent = '🚫 出港困難';
+      banner.className = 'banner-nogo';
+    }
+  }
 
   // SVG リングゲージ
   const ring = document.getElementById('score-ring-circle');
@@ -102,24 +123,27 @@ export function renderConditionCards(weather, naha, route, kerama) {
   const compass = windDir != null ? degToCompass(windDir) : '';
 
   // 那覇港 (天気データ + 那覇海況)
+  const nahaIdx = naha ? findCurrentHourIndex(naha.hourly.time) : 0;
   setCardData('naha', {
-    wave:    naha    ? `${naha.hourly.wave_height[0].toFixed(1)} m` : '--',
+    wave:    naha    ? `${naha.hourly.wave_height[nahaIdx].toFixed(1)} m` : '--',
     wind:    weather ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
   // 航路中間
+  const routeIdx = route ? findCurrentHourIndex(route.hourly.time) : 0;
   setCardData('route', {
-    wave:    route   ? `${route.hourly.wave_height[0].toFixed(1)} m` : '--',
+    wave:    route   ? `${route.hourly.wave_height[routeIdx].toFixed(1)} m` : '--',
     wind:    weather ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
   // 慶良間ダイブエリア
-  const sst   = kerama?.hourly.sea_surface_temperature?.[0];
-  const swell = kerama?.hourly.swell_wave_period?.[0];
+  const keramaIdx = kerama ? findCurrentHourIndex(kerama.hourly.time) : 0;
+  const sst   = kerama?.hourly.sea_surface_temperature?.[keramaIdx];
+  const swell = kerama?.hourly.swell_wave_period?.[keramaIdx];
   setCardData('kerama', {
-    wave:  kerama    ? `${kerama.hourly.wave_height[0].toFixed(1)} m` : '--',
+    wave:  kerama    ? `${kerama.hourly.wave_height[keramaIdx].toFixed(1)} m` : '--',
     swell: swell != null ? `${swell.toFixed(0)} s` : '--',
     sst:   sst   != null ? `${sst.toFixed(1)} ℃` : '--',
   });
@@ -369,37 +393,6 @@ export function renderFooter() {
     timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit',
   });
   document.getElementById('last-updated').textContent = `最終更新: ${now}`;
-}
-
-// ── 沖縄エリア衛星画像（NASA GIBS/WVS） ──────────────────────
-
-export function renderSatelliteImage() {
-  const imgEl     = document.getElementById('sat-image');
-  const captionEl = document.getElementById('sat-caption');
-  if (!imgEl) return;
-
-  // JSTで午前12時前は前日の画像を使う（MODISが未処理の可能性）
-  const jstHour = parseInt(
-    new Date().toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', hour12: false })
-  );
-  const offset  = jstHour < 12 ? 1 : 0;
-  const d       = new Date(Date.now() - offset * 86400000);
-  const dateStr = d.toISOString().slice(0, 10);
-
-  const buildUrl = (date) =>
-    `https://wvs.earthdata.nasa.gov/api/v1/snapshot?REQUEST=GetSnapshot` +
-    `&TIME=${date}&BBOX=125,24,131,29&CRS=EPSG:4326` +
-    `&LAYERS=MODIS_Terra_CorrectedReflectance_TrueColor,Coastlines_15m` +
-    `&FORMAT=image/jpeg&WIDTH=640&HEIGHT=380`;
-
-  imgEl.src = buildUrl(dateStr);
-  if (captionEl) captionEl.textContent = `🛰 MODIS衛星（${dateStr}）沖縄〜慶良間エリア`;
-
-  imgEl.onerror = () => {
-    const prev = new Date(d.getTime() - 86400000).toISOString().slice(0, 10);
-    imgEl.src = buildUrl(prev);
-    if (captionEl) captionEl.textContent = `🛰 MODIS衛星（${prev}）沖縄〜慶良間エリア`;
-  };
 }
 
 // ── データ時刻・ソース（Page 1） ────────────────────────────

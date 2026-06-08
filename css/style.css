@@ -13,6 +13,23 @@
   --radius:   12px;
 }
 
+/* ── 出港判断バナー ─────────────────────────────── */
+#go-nogo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 800;
+  padding: 0.65rem 1rem;
+  letter-spacing: 0.06em;
+}
+#go-nogo-banner.hidden { display: none; }
+.banner-go      { background: #1a9e5c; color: #fff; }
+.banner-caution { background: #d4890a; color: #fff; }
+.banner-nogo    { background: #c0392b; color: #fff; }
+
 /* ── ベース ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
@@ -276,15 +293,15 @@ body {
   text-align: center;
 }
 .sub-icon  { font-size: 1rem; line-height: 1; }
-.sub-label { font-size: 0.6rem; color: var(--muted); margin: 0.1rem 0; }
+.sub-label { font-size: 0.68rem; color: var(--muted); margin: 0.1rem 0; }
 .sub-val   { font-size: 0.85rem; font-weight: 700; }
 
-/* 3地点カード（横並び） */
+/* 3地点カード（縦並び） */
 #conditions-grid {
   display: flex;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 0.5rem;
   width: 100%;
-  max-width: 380px;
 }
 
 .condition-card {
@@ -296,7 +313,7 @@ body {
   backdrop-filter: blur(8px);
 }
 
-.card-title    { font-size: 0.72rem; font-weight: 700; margin-bottom: 0.1rem; }
+.card-title    { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.1rem; }
 .card-subtitle { font-size: 0.6rem; color: var(--muted); margin-bottom: 0.5rem; }
 .card-row {
   display: flex;
@@ -306,8 +323,8 @@ body {
   gap: 0.25rem;
 }
 .card-row:last-child { border-bottom: none; }
-.label { font-size: 0.65rem; color: var(--muted); white-space: nowrap; }
-.value { font-size: 0.72rem; font-weight: 600; text-align: right; }
+.label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+.value { font-size: 0.82rem; font-weight: 600; text-align: right; }
 
 #epic-caption {
   font-size: 0.68rem;
@@ -368,7 +385,7 @@ body {
   min-width: 0;
   overflow: hidden;
 }
-.cal-day   { font-size: 0.55rem; color: var(--muted); }
+.cal-day   { font-size: 0.68rem; color: var(--muted); }
 .cal-num   { font-size: 0.88rem; font-weight: 700; }
 .cal-score { font-size: 0.68rem; color: var(--accent); font-weight: 600; }
 .cal-icon  { font-size: 0.78rem; }
@@ -464,7 +481,7 @@ body {
 /* データ時刻・ソース */
 #data-info {
   font-size: 0.62rem;
-  color: rgba(255,255,255,0.28);
+  color: rgba(255,255,255,0.55);
   letter-spacing: 0.03em;
   text-align: center;
 }
