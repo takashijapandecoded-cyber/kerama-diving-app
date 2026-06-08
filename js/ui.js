@@ -1,15 +1,9 @@
-import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods } from './score.js';
+import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods, findCurrentHourIndex } from './score.js';
 import { getWeatherIcon } from '../assets/weather-icons.js';
 import { CALENDAR_THRESHOLD } from './config.js';
 
 // SVGリングの円周（r=80）
 const CIRCUMFERENCE = 2 * Math.PI * 80; // ≈ 502.65
-
-function findCurrentHourIndex(times) {
-  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
-  const idx = times.findIndex(t => t.startsWith(nowStr));
-  return idx >= 0 ? idx : 0;
-}
 
 // 風向（度数）→ 8方位ラベル
 function degToCompass(deg) {

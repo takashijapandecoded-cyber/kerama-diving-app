@@ -15,9 +15,11 @@
 
 /* ── 出港判断バナー ─────────────────────────────── */
 #go-nogo-banner {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 100;
+  left: 0;
+  right: 0;
+  z-index: 200;
   width: 100%;
   text-align: center;
   font-size: 1.15rem;
@@ -666,7 +668,6 @@ body {
   border: 1px solid var(--border);
   height: 280px;
 }
-.sat-wrap img    { width: 100%; height: 100%; object-fit: cover; display: block; }
 .sat-wrap iframe { width: 100%; height: 100%; border: none; display: block; }
 
 #sat-caption {
@@ -821,7 +822,7 @@ body {
 ══════════════════════════════════════════════════════════════ */
 
 /* ── ヒーローオーバーレイをより劇的に ──────────────────────── */
-#page-today .hero-overlay {
+#page-today #hero-overlay {
   background: linear-gradient(
     180deg,
     rgba(0,12,35,0.18)  0%,

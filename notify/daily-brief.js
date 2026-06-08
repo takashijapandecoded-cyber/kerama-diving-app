@@ -52,12 +52,12 @@ function degToCompass(deg) {
 
 // ── スコア計算（score.js と同じロジック） ──────────────────
 function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
-  const waveScore = waveHeight < 0.5 ? 10 : waveHeight < 1.0 ? 8 :
-                    waveHeight < 1.5 ? 6  : waveHeight < 2.0 ? 4 :
-                    waveHeight < 2.5 ? 2  : 0;
-  const windScore = windSpeed < 5  ? 10 : windSpeed < 10 ? 8 :
-                    windSpeed < 15 ? 6  : windSpeed < 20 ? 3 :
-                    windSpeed < 25 ? 1  : 0;
+  const waveScore = waveHeight <= 0.5 ? 10 : waveHeight <= 1.0 ? 8 :
+                    waveHeight <= 1.5 ? 6  : waveHeight <= 2.0 ? 4 :
+                    waveHeight <= 2.5 ? 2  : 0;
+  const windScore = windSpeed <= 5  ? 10 : windSpeed <= 10 ? 8 :
+                    windSpeed <= 15 ? 6  : windSpeed <= 20 ? 3 :
+                    windSpeed <= 25 ? 1  : 0;
   function scoreWeatherCode(code) {
     if (code <= 1)  return 10;  // 快晴
     if (code <= 3)  return 9;   // 晴れ〜曇り
@@ -228,12 +228,17 @@ async function main() {
   }
 
   console.log('📡 データ取得中...');
-  const [weather, naha, route, kerama] = await Promise.all([
+  const results = await Promise.allSettled([
     fetchWeather(),
     fetchMarine('naha'),
     fetchMarine('route'),
     fetchMarine('kerama'),
   ]);
+  const [weather, naha, route, kerama] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+  if (!weather || !kerama) {
+    console.error('⚠️ 必須データ（天気/慶良間）の取得に失敗しました。メール送信をスキップします。');
+    process.exit(1);
+  }
 
   const todayStr = new Date().toLocaleDateString('ja-JP', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
