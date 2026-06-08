@@ -30,7 +30,15 @@
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: 0.06em;
+  /* バナーが上からスライドインする */
+  animation: banner-slide-in 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
+
+@keyframes banner-slide-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
 #go-nogo-banner.hidden { display: none; }
 .banner-go      { background: #1a9e5c; color: #fff; }
 .banner-caution { background: #d4890a; color: #fff; }
@@ -69,6 +77,7 @@ body {
   z-index: 100;
   display: flex;
   gap: 6px;
+  transition: top 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dot {
@@ -93,6 +102,7 @@ body {
   z-index: 100;
   display: flex;
   gap: 1.5rem;
+  transition: top 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .plabel {
@@ -116,6 +126,9 @@ body {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  /* バナー出現時のガクつきをなめらかに */
+  transition: margin-top 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              height     0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 #pages-container::-webkit-scrollbar { display: none; }
 
