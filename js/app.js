@@ -1,5 +1,5 @@
 import { fetchAll } from './api.js';
-import { calcScore } from './score.js';
+import { calcScore, findCurrentHourIndex } from './score.js';
 import { SCORE_THRESHOLDS } from './config.js';
 import {
   renderHero,
@@ -45,10 +45,11 @@ function dataSignature(weather, kerama) {
 }
 
 function renderAll(epic, weather, naha, route, kerama) {
-  const currentWave  = kerama?.hourly.wave_height?.[0]       ?? 1.0;
+  const hIdx         = findCurrentHourIndex(kerama?.hourly.time ?? []);
+  const currentWave  = kerama?.hourly.wave_height?.[hIdx]       ?? 1.0;
   const currentWind  = (weather?.current?.wind_speed_10m ?? 10) / 3.6;
-  const currentCode  = weather?.current?.weathercode          ?? 0;
-  const currentSwell = kerama?.hourly.swell_wave_period?.[0]  ?? 8;
+  const currentCode  = weather?.current?.weathercode            ?? 0;
+  const currentSwell = kerama?.hourly.swell_wave_period?.[hIdx] ?? 8;
 
   const score     = calcScore({ waveHeight: currentWave, windSpeed: currentWind, weatherCode: currentCode, swellPeriod: currentSwell });
   const subScores = calcSubScores({ waveHeight: currentWave, windSpeed: currentWind, weatherCode: currentCode, swellPeriod: currentSwell });

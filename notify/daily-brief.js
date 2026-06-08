@@ -26,6 +26,7 @@ async function fetchWeather() {
   p.set('forecast_days', '7');
   p.set('wind_speed_unit', 'kmh');
   const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`fetchWeather failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
 
@@ -39,6 +40,7 @@ async function fetchMarine(locKey) {
   p.set('timezone', 'Asia/Tokyo');
   p.set('forecast_days', '7');
   const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`fetchMarine(${locKey}) failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
 
@@ -56,9 +58,21 @@ function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
   const windScore = windSpeed < 5  ? 10 : windSpeed < 10 ? 8 :
                     windSpeed < 15 ? 6  : windSpeed < 20 ? 3 :
                     windSpeed < 25 ? 1  : 0;
-  const wScore    = weatherCode <= 1 ? 10 : weatherCode <= 3 ? 9 :
-                    weatherCode <= 49 ? 7 : weatherCode <= 65 ? 4 :
-                    weatherCode >= 95 ? 0 : 5;
+  function scoreWeatherCode(code) {
+    if (code <= 1)  return 10;  // 快晴
+    if (code <= 2)  return 9;   // 晴れ
+    if (code <= 3)  return 7;   // 曇り
+    if (code === 45 || code === 48) return 5;  // 霧
+    if (code >= 51 && code <= 55)   return 7;  // 霧雨
+    if (code >= 61 && code <= 65)   return 5;  // 雨
+    if (code >= 71 && code <= 77)   return 3;  // 雪・みぞれ
+    if (code >= 80 && code <= 82)   return 4;  // にわか雨（弱〜中）
+    if (code >= 83 && code <= 84)   return 3;  // にわか雨（強）
+    if (code >= 85 && code <= 86)   return 2;  // 雪のにわか雨
+    if (code >= 95) return 0;   // 雷雨
+    return 6;                   // その他
+  }
+  const wScore    = scoreWeatherCode(weatherCode);
   const sScore    = swellPeriod >= 10 ? 10 : swellPeriod >= 8 ? 7 :
                     swellPeriod >= 6  ? 5  : 3;
   const raw = waveScore * 0.4 + windScore * 0.35 + wScore * 0.15 + sScore * 0.10;
@@ -115,16 +129,18 @@ function weeklyScores(weather, kerama) {
 }
 
 // ── メール本文を生成 ───────────────────────────────────────
-function buildEmailBody({ score, weather, naha, route, kerama, todayStr }) {
+function buildEmailBody({ score, weather, naha, route, kerama, todayStr, hIdx = 0 }) {
   const wCode    = weather.current.weathercode;
   const windKmh  = weather.current.wind_speed_10m.toFixed(0);
   const windDeg  = weather.current.wind_direction_10m;
   const windDir  = windDeg != null ? degToCompass(windDeg) : '';
 
-  const nahaWave   = naha.hourly.wave_height?.[0]?.toFixed(1) ?? '--';
-  const routeWave  = route.hourly.wave_height?.[0]?.toFixed(1) ?? '--';
-  const keramaWave = kerama.hourly.wave_height?.[0]?.toFixed(1) ?? '--';
-  const sst        = kerama.hourly.sea_surface_temperature?.[0]?.toFixed(1) ?? '--';
+  const nahaIdx    = (() => { const i = naha.hourly.time.findIndex(t => t.startsWith(new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13))); return i >= 0 ? i : 0; })();
+  const routeIdx   = (() => { const i = route.hourly.time.findIndex(t => t.startsWith(new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13))); return i >= 0 ? i : 0; })();
+  const nahaWave   = naha.hourly.wave_height?.[nahaIdx]?.toFixed(1) ?? '--';
+  const routeWave  = route.hourly.wave_height?.[routeIdx]?.toFixed(1) ?? '--';
+  const keramaWave = kerama.hourly.wave_height?.[hIdx]?.toFixed(1) ?? '--';
+  const sst        = kerama.hourly.sea_surface_temperature?.[hIdx]?.toFixed(1) ?? '--';
 
   // 潮汐
   const peakTimes   = kerama.hourly.time;
@@ -225,16 +241,18 @@ async function main() {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   }).replace(/\//g, '-').slice(0, 10);
 
-  const currentWave = kerama.hourly.wave_height?.[0] ?? 1.0;
+  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
+  const hIdx = (() => { const i = kerama.hourly.time.findIndex(t => t.startsWith(nowStr)); return i >= 0 ? i : 0; })();
+  const currentWave = kerama.hourly.wave_height?.[hIdx] ?? 1.0;
   const currentWind = weather.current.wind_speed_10m / 3.6;
   const score = calcScore({
     waveHeight:  currentWave,
     windSpeed:   currentWind,
     weatherCode: weather.current.weathercode ?? 0,
-    swellPeriod: kerama.hourly.swell_wave_period?.[0] ?? 8,
+    swellPeriod: kerama.hourly.swell_wave_period?.[hIdx] ?? 8,
   });
 
-  const body = buildEmailBody({ score, weather, naha, route, kerama, todayStr });
+  const body = buildEmailBody({ score, weather, naha, route, kerama, todayStr, hIdx });
 
   const transporter = nodemailer.createTransport({
     service: 'gmail',

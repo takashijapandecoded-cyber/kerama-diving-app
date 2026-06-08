@@ -102,3 +102,10 @@ export function tidePeriods(peaks) {
   }
   return periods;
 }
+
+// hourly.time 配列から現在時刻（JST）に対応するインデックスを返す
+export function findCurrentHourIndex(times) {
+  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
+  const idx = times.findIndex(t => t.startsWith(nowStr));
+  return idx >= 0 ? idx : 0;
+}

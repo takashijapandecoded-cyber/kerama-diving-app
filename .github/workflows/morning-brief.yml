@@ -1,6 +1,8 @@
 name: 毎朝5時 ダイビングコンディション通知
 
 on:
+  schedule:
+    - cron: '0 20 * * *'  # UTC 20:00 = JST 05:00
   # cron-job.org が毎朝5時JST に呼び出す（手動トリガー）
   workflow_dispatch:
     inputs:
