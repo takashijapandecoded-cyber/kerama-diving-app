@@ -9,7 +9,6 @@ import {
   renderForecastTable,
   renderFooter,
   renderDataInfo,
-  renderSatelliteImage,
 } from './ui.js';
 
 // 各要素の個別スコアを計算して内訳チップ用に返す
