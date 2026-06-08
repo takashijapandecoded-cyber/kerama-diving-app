@@ -201,13 +201,15 @@ body {
 .bubble:nth-child(8) { width:12px; height:12px; left:92%; animation-duration:12s; animation-delay:2.5s; }
 
 /* Page1 コンテンツ配置 */
+/* justify-content: center はコンテンツ全体が縦に溢れるとき
+   先頭要素（タイトル・日付）が画面外に消えてしまうため flex-start に変更 */
 #today-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 1rem;
-  padding-top: 56px;
+  padding-top: 60px;
   padding-bottom: 80px;
   overflow-y: auto;
   height: 100%;
