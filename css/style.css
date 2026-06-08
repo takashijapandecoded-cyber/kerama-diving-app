@@ -36,10 +36,16 @@
 .banner-caution { background: #d4890a; color: #fff; }
 .banner-nogo    { background: #c0392b; color: #fff; }
 
-/* バナー表示時にコンテンツを押し下げる */
-#go-nogo-banner:not(.hidden) + #pages-container {
+/* バナー表示時にコンテンツ・ナビを押し下げる */
+body.banner-visible #pages-container {
   height: calc(100svh - var(--banner-h));
   margin-top: var(--banner-h);
+}
+body.banner-visible #page-dots {
+  top: calc(var(--banner-h) + 16px);
+}
+body.banner-visible #page-labels {
+  top: calc(var(--banner-h) + 30px);
 }
 
 /* ── ベース ─────────────────────────────────────────────── */

@@ -51,6 +51,8 @@ export function renderHero(epic, score, subScores) {
       banner.textContent = '🚫 出港困難';
       banner.className = 'banner-nogo';
     }
+    // バナー表示時にナビを押し下げる
+    document.body.classList.add('banner-visible');
   }
 
   // SVG リングゲージ
