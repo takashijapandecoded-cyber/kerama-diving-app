@@ -60,17 +60,15 @@ function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
                     windSpeed < 25 ? 1  : 0;
   function scoreWeatherCode(code) {
     if (code <= 1)  return 10;  // 快晴
-    if (code <= 2)  return 9;   // 晴れ
-    if (code <= 3)  return 7;   // 曇り
-    if (code === 45 || code === 48) return 5;  // 霧
-    if (code >= 51 && code <= 55)   return 7;  // 霧雨
-    if (code >= 61 && code <= 65)   return 5;  // 雨
-    if (code >= 71 && code <= 77)   return 3;  // 雪・みぞれ
-    if (code >= 80 && code <= 82)   return 4;  // にわか雨（弱〜中）
-    if (code >= 83 && code <= 84)   return 3;  // にわか雨（強）
-    if (code >= 85 && code <= 86)   return 2;  // 雪のにわか雨
-    if (code >= 95) return 0;   // 雷雨
-    return 6;                   // その他
+    if (code <= 3)  return 9;   // 晴れ〜曇り
+    if (code <= 49) return 7;   // 霧・靄
+    if (code <= 59) return 5;   // 霧雨
+    if (code <= 69) return 4;   // 雨
+    if (code <= 79) return 3;   // みぞれ・雪
+    if (code <= 82) return 4;   // にわか雨
+    if (code <= 84) return 3;   // 強いにわか雨
+    if (code <= 94) return 6;   // 雷雨なし
+    return 0;                   // 雷雨
   }
   const wScore    = scoreWeatherCode(weatherCode);
   const sScore    = swellPeriod >= 10 ? 10 : swellPeriod >= 8 ? 7 :
