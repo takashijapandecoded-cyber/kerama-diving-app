@@ -64,6 +64,15 @@ function renderAll(epic, weather, naha, route, kerama) {
 }
 
 async function main() {
+  // 日付はAPIを待たずに即座に表示
+  const heroDate = document.getElementById('hero-date');
+  if (heroDate) {
+    heroDate.textContent = new Date().toLocaleDateString('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
+    });
+  }
+
   const data = await fetchAll();
   let currentSig = dataSignature(data.weather, data.kerama);
   renderAll(data.epic, data.weather, data.naha, data.route, data.kerama);
