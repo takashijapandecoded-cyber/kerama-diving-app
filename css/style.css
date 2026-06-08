@@ -470,6 +470,32 @@ body {
 }
 #data-info strong { color: rgba(255,255,255,0.5); }
 
+/* ── 予報更新フローティングボタン ───────────────────────── */
+@keyframes update-blink {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%       { opacity: 0.65; transform: scale(1.06); }
+}
+#update-btn {
+  position: fixed;
+  bottom: 84px;
+  right: 20px;
+  z-index: 200;
+  height: 40px;
+  padding: 0 1rem;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #00b4d8, #0077b6);
+  border: none;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0,180,216,0.55);
+  animation: update-blink 1.2s ease-in-out infinite;
+  transition: transform 0.15s;
+}
+#update-btn:hover { transform: scale(1.08); }
+#update-btn.hidden { display: none; }
+
 /* ── メール設定フローティングボタン ─────────────────────── */
 #email-settings-btn {
   position: fixed;
