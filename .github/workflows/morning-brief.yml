@@ -1,9 +1,8 @@
 name: 毎朝5時 ダイビングコンディション通知
 
 on:
-  schedule:
-    - cron: '0 20 * * *'  # UTC 20:00 = JST 05:00
-  # cron-job.org が毎朝5時JST に呼び出す（手動トリガー）
+  # cron-job.org が毎朝5時JST(UTC 20:00)に workflow_dispatch で呼び出す
+  # GitHub schedule は cron-job.org と二重起動になるため削除
   workflow_dispatch:
     inputs:
       test_email:
@@ -21,7 +20,7 @@ jobs:
       - name: Node.js セットアップ
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'  # Node.js 20は2026/06/16廃止のため22に更新
 
       - name: 依存パッケージをインストール
         working-directory: notify
