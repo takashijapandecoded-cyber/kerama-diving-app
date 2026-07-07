@@ -26,6 +26,9 @@ export const DIVE_POINTS = [
   { key: 'kuroshima', name: '黒島北',         lat: 26.24, lon: 127.33, note: 'ツインロック' },
   { key: 'triangle',  name: 'トライアングル', lat: 26.10, lon: 127.21, note: '上級・ドリフト' },
   { key: 'aguni',     name: '粟国（筆ん崎）', lat: 26.57, lon: 127.21, note: '遠征・ギンガメ' },
+  { key: 'tonaki',    name: '渡名喜',         lat: 26.37, lon: 127.14, note: '遠征・慶良間北西' },
+  { key: 'sugarhill', name: 'シュガーヒル',   lat: 26.26, lon: 127.57, note: 'チービシ・砂の丘' },
+  { key: 'kuefu',     name: 'クエフ北',       lat: 26.25, lon: 127.59, note: 'チービシ・近場' },
 ];
 
 // NASA EPIC API キー（無料のDEMO_KEYを使用）
