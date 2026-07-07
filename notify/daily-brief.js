@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { DIVE_POINTS } from '../js/config.js';
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
 const GMAIL_USER     = process.env.GMAIL_USER;
@@ -41,6 +42,20 @@ async function fetchMarine(locKey) {
   p.set('forecast_days', '7');
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`fetchMarine(${locKey}) failed: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// 5ダイビングポイントを1回のマルチ座標リクエストで取得（DIVE_POINTSと同じ並びの配列で返る）
+async function fetchDivePoints() {
+  const url = new URL('https://marine-api.open-meteo.com/v1/marine');
+  const p = url.searchParams;
+  p.set('latitude',  DIVE_POINTS.map(d => d.lat).join(','));
+  p.set('longitude', DIVE_POINTS.map(d => d.lon).join(','));
+  p.set('hourly', 'wave_height,swell_wave_period,ocean_current_velocity,ocean_current_direction');
+  p.set('timezone', 'Asia/Tokyo');
+  p.set('forecast_days', '2');
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`fetchDivePoints failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
 
@@ -126,8 +141,46 @@ function weeklyScores(weather, kerama) {
   });
 }
 
+// ── ポイント別コンディション欄を生成 ───────────────────────
+function buildDivePointsSection(divePoints, weather) {
+  if (!divePoints || !Array.isArray(divePoints)) return '';
+
+  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
+  const windSpeed   = (weather.current.wind_speed_10m ?? 10) / 3.6;
+  const weatherCode = weather.current.weathercode ?? 0;
+
+  const lines = DIVE_POINTS.map((point, i) => {
+    const hourly = divePoints[i]?.hourly;
+    if (!hourly) return `🤿 ${point.name}:  データ取得失敗`;
+
+    const idx    = (() => { const j = hourly.time.findIndex(t => t.startsWith(nowStr)); return j >= 0 ? j : 0; })();
+    const wave   = hourly.wave_height?.[idx];
+    const swellP = hourly.swell_wave_period?.[idx];
+    const curV   = hourly.ocean_current_velocity?.[idx];   // km/h
+    const curD   = hourly.ocean_current_direction?.[idx];
+
+    const score = calcScore({
+      waveHeight:  wave ?? 1.0,
+      windSpeed,
+      weatherCode,
+      swellPeriod: swellP ?? 8,
+    });
+    const icon = score >= 7 ? '✅' : score >= 4 ? '⚠️' : '❌';
+
+    const waveStr  = wave   != null ? `波${wave.toFixed(1)}m` : '波--';
+    const swellStr = swellP != null ? `うねり${swellP.toFixed(0)}s` : 'うねり--';
+    const curStr   = curV   != null ? `潮流${(curV / 3.6).toFixed(1)}m/s${curD != null ? '(' + degToCompass(curD) + ')' : ''}` : '潮流--';
+    return `🤿 ${point.name}:  ${waveStr} ${swellStr} ${curStr}  ${score}/10 ${icon}`;
+  });
+
+  return `
+━━━ ポイント別コンディション（優先度順） ━━━
+${lines.join('\n')}
+`;
+}
+
 // ── メール本文を生成 ───────────────────────────────────────
-function buildEmailBody({ score, weather, naha, route, kerama, todayStr, hIdx = 0 }) {
+function buildEmailBody({ score, weather, naha, route, kerama, divePoints, todayStr, hIdx = 0 }) {
   const wCode    = weather.current.weathercode;
   const windKmh  = weather.current.wind_speed_10m.toFixed(0);
   const windDeg  = weather.current.wind_direction_10m;
@@ -197,7 +250,7 @@ ${scoreText(score)}
 📍 那覇港沖:  波${nahaWave}m / 風${windKmh}km/h ${windDir}
 ⛵ 航路中間:  波${routeWave}m
 🤿 慶良間沖:  波${keramaWave}m / 海水温${sst}℃
-
+${buildDivePointsSection(divePoints, weather)}
 ━━━ 今日の潮汐（慶良間） ━━━
 🔼 満潮: ${highs.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
 🔽 干潮: ${lows.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
@@ -233,8 +286,9 @@ async function main() {
     fetchMarine('naha'),
     fetchMarine('route'),
     fetchMarine('kerama'),
+    fetchDivePoints(),
   ]);
-  const [weather, naha, route, kerama] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+  const [weather, naha, route, kerama, divePoints] = results.map(r => r.status === 'fulfilled' ? r.value : null);
   if (!weather || !kerama) {
     console.error('⚠️ 必須データ（天気/慶良間）の取得に失敗しました。メール送信をスキップします。');
     process.exit(1);
@@ -255,7 +309,14 @@ async function main() {
     swellPeriod: kerama.hourly.swell_wave_period?.[hIdx] ?? 8,
   });
 
-  const body = buildEmailBody({ score, weather, naha, route, kerama, todayStr, hIdx });
+  const body = buildEmailBody({ score, weather, naha, route, kerama, divePoints, todayStr, hIdx });
+
+  // DRY_RUN=1 なら送信せずに本文を表示して終了（ローカルテスト用）
+  if (process.env.DRY_RUN) {
+    console.log(body);
+    console.log(`(DRY_RUN: メール送信スキップ / スコア: ${score}/10)`);
+    return;
+  }
 
   const transporter = nodemailer.createTransport({
     service: 'gmail',

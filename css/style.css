@@ -426,6 +426,48 @@ body {
 .cal-caution { border-color: var(--caution); }
 .cal-bad     { border-color: var(--danger); }
 
+/* ポイント別コンディション */
+#dive-points {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.dive-point-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: linear-gradient(160deg, rgba(26,39,68,0.82) 0%, rgba(12,22,48,0.78) 100%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  box-shadow: 0 3px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.dp-name  { min-width: 6.2rem; flex-shrink: 0; }
+.dp-title { font-size: 0.82rem; font-weight: 700; }
+.dp-note  { font-size: 0.58rem; color: var(--muted); margin-top: 0.05rem; }
+
+.dp-metrics {
+  display: flex;
+  gap: 0.6rem;
+  flex: 1;
+  justify-content: space-between;
+  min-width: 0;
+}
+.dp-metric { text-align: center; min-width: 0; }
+.dp-label  { display: block; font-size: 0.58rem; color: var(--muted); }
+.dp-val    { display: block; font-size: 0.74rem; font-weight: 600; white-space: nowrap; }
+
+.dive-point-row .score-chip { flex-shrink: 0; }
+
+.dp-error, .dive-point-error {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+  flex: 1;
+}
+
 /* 潮汐 */
 #tide-info {
   display: flex;
@@ -527,7 +569,7 @@ body {
 }
 #update-btn {
   position: fixed;
-  bottom: 84px;
+  bottom: 24px;  /* ベルボタン削除に伴い最下部へ */
   right: 20px;
   z-index: 200;
   height: 40px;
@@ -830,14 +872,6 @@ body {
 .guide-update-item:hover,
 .guide-point:hover { transform: translateX(3px); }
 
-/* ── 🔔ベルボタン — 拡張する輪のパルスアニメ ────────────────── */
-@keyframes btn-pulse {
-  0%   { box-shadow: 0 0 0 0   rgba(0,180,216,0.55), 0 4px 20px rgba(0,0,0,0.45); }
-  60%  { box-shadow: 0 0 0 10px rgba(0,180,216,0),    0 4px 20px rgba(0,0,0,0.45); }
-  100% { box-shadow: 0 0 0 0   rgba(0,180,216,0),    0 4px 20px rgba(0,0,0,0.45); }
-}
-#email-settings-btn { animation: btn-pulse 2.8s ease-out infinite; }
-
 /* ── セクションタイトルに下線アクセント ─────────────────────── */
 .section-title {
   position: relative;
@@ -864,10 +898,4 @@ body {
 /* ── ナビゲーションドット — アクティブ時にグロー ────────────── */
 .dot.active {
   box-shadow: 0 0 8px rgba(0,180,216,0.7), 0 0 16px rgba(0,180,216,0.35);
-}
-
-/* ── フッターを微妙にリッチに ────────────────────────────────── */
-footer {
-  background: linear-gradient(180deg, transparent, rgba(0,180,216,0.04));
-  border-top: 1px solid rgba(0,180,216,0.12);
 }

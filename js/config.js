@@ -17,6 +17,17 @@ export const LOCATIONS = {
   },
 };
 
+// ダイビングポイント（優くん優先度順）
+// 座標はおおよその位置。Marine APIの格子は約5kmなので数百m単位の精度は不要
+// TODO: 優くんに実際のピン位置を確認してもらい必要なら微調整
+export const DIVE_POINTS = [
+  { key: 'shimosone', name: '下曽根',         lat: 26.06, lon: 127.24, note: '久場島南・外洋' },
+  { key: 'uchizan',   name: 'ウチザン礁',     lat: 26.25, lon: 127.40, note: '前島〜渡嘉敷間・流れ強め' },
+  { key: 'kuroshima', name: '黒島北',         lat: 26.24, lon: 127.33, note: 'ツインロック' },
+  { key: 'triangle',  name: 'トライアングル', lat: 26.10, lon: 127.21, note: '上級・ドリフト' },
+  { key: 'aguni',     name: '粟国（筆ん崎）', lat: 26.57, lon: 127.21, note: '遠征・ギンガメ' },
+];
+
 // NASA EPIC API キー（無料のDEMO_KEYを使用）
 // DEMO_KEYは日40回の制限あり。本番では https://api.nasa.gov で無料APIキーを取得してGitHub Secretsに設定推奨
 export const NASA_API_KEY = 'DEMO_KEY';

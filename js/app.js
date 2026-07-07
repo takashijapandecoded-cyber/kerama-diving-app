@@ -4,6 +4,7 @@ import { SCORE_THRESHOLDS } from './config.js';
 import {
   renderHero,
   renderConditionCards,
+  renderDivePoints,
   renderCalendar,
   renderTideChart,
   renderForecastTable,
@@ -43,7 +44,7 @@ function dataSignature(weather, kerama) {
   return `${t1}_${t2}`;
 }
 
-function renderAll(epic, weather, naha, route, kerama) {
+function renderAll(epic, weather, naha, route, kerama, divePoints) {
   const hIdx         = findCurrentHourIndex(kerama?.hourly.time ?? []);
   const currentWave  = kerama?.hourly.wave_height?.[hIdx]       ?? 1.0;
   const currentWind  = (weather?.current?.wind_speed_10m ?? 10) / 3.6;
@@ -56,6 +57,7 @@ function renderAll(epic, weather, naha, route, kerama) {
 
   renderHero(epic, score, subScores);
   renderConditionCards(weather, naha, route, kerama);
+  renderDivePoints(divePoints, weather);
   renderDataInfo(weather);
   renderTideChart(kerama);
   renderCalendar(weather, kerama);
@@ -75,7 +77,7 @@ async function main() {
 
   const data = await fetchAll();
   let currentSig = dataSignature(data.weather, data.kerama);
-  renderAll(data.epic, data.weather, data.naha, data.route, data.kerama);
+  renderAll(data.epic, data.weather, data.naha, data.route, data.kerama, data.divePoints);
 
   const updateBtn = document.getElementById('update-btn');
   let latestData  = data;
@@ -109,7 +111,7 @@ async function main() {
 
   updateBtn.addEventListener('click', () => {
     currentSig = dataSignature(latestData.weather, latestData.kerama);
-    renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama);
+    renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama, latestData.divePoints);
     updateBtn.classList.add('hidden');
   });
 }

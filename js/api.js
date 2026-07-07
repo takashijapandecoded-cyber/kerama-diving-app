@@ -1,4 +1,4 @@
-import { LOCATIONS, NASA_API_KEY } from './config.js';
+import { LOCATIONS, DIVE_POINTS, NASA_API_KEY } from './config.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5分キャッシュ
 
@@ -102,22 +102,51 @@ export async function fetchMarine(locationKey) {
   return data;
 }
 
-// 3地点＋天気＋EPICを並列取得
+// Open-Meteo Marine: 5ダイビングポイントを1回のマルチ座標リクエストで取得
+// レスポンスはポイントごとの配列で返る（DIVE_POINTS と同じ並び）
+export async function fetchDivePoints() {
+  const cached = fromCache('divepoints');
+  if (cached) return cached;
+
+  const url = new URL('https://marine-api.open-meteo.com/v1/marine');
+  url.searchParams.set('latitude',  DIVE_POINTS.map(p => p.lat).join(','));
+  url.searchParams.set('longitude', DIVE_POINTS.map(p => p.lon).join(','));
+  url.searchParams.set('hourly', [
+    'wave_height',
+    'swell_wave_height',
+    'swell_wave_period',
+    'swell_wave_direction',
+    'ocean_current_velocity',
+    'ocean_current_direction',
+  ].join(','));
+  url.searchParams.set('timezone', 'Asia/Tokyo');
+  url.searchParams.set('forecast_days', '2');
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Open-Meteo Marine API エラー (dive points)');
+  const data = await res.json();
+  toCache('divepoints', data);
+  return data;
+}
+
+// 3地点＋天気＋EPIC＋ダイビングポイントを並列取得
 export async function fetchAll() {
-  const [epicResult, weatherResult, nahaResult, routeResult, keramaResult] =
+  const [epicResult, weatherResult, nahaResult, routeResult, keramaResult, divePointsResult] =
     await Promise.allSettled([
       fetchEpicImage(),
       fetchWeather(),
       fetchMarine('naha'),
       fetchMarine('route'),
       fetchMarine('kerama'),
+      fetchDivePoints(),
     ]);
 
   return {
-    epic:    epicResult.status    === 'fulfilled' ? epicResult.value    : null,
-    weather: weatherResult.status === 'fulfilled' ? weatherResult.value : null,
-    naha:    nahaResult.status    === 'fulfilled' ? nahaResult.value    : null,
-    route:   routeResult.status   === 'fulfilled' ? routeResult.value   : null,
-    kerama:  keramaResult.status  === 'fulfilled' ? keramaResult.value  : null,
+    epic:       epicResult.status       === 'fulfilled' ? epicResult.value       : null,
+    weather:    weatherResult.status    === 'fulfilled' ? weatherResult.value    : null,
+    naha:       nahaResult.status       === 'fulfilled' ? nahaResult.value       : null,
+    route:      routeResult.status      === 'fulfilled' ? routeResult.value      : null,
+    kerama:     keramaResult.status     === 'fulfilled' ? keramaResult.value     : null,
+    divePoints: divePointsResult.status === 'fulfilled' ? divePointsResult.value : null,
   };
 }

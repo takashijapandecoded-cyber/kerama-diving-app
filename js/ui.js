@@ -1,6 +1,6 @@
 import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods, findCurrentHourIndex } from './score.js';
 import { getWeatherIcon } from '../assets/weather-icons.js';
-import { CALENDAR_THRESHOLD } from './config.js';
+import { CALENDAR_THRESHOLD, DIVE_POINTS } from './config.js';
 
 // SVGリングの円周（r=80）
 const CIRCUMFERENCE = 2 * Math.PI * 80; // ≈ 502.65
@@ -163,6 +163,64 @@ function setCardData(prefix, data) {
     const el = document.getElementById(`${prefix}-${key}`);
     if (el) el.textContent = val;
   }
+}
+
+// ── ポイント別コンディション（海況ページ） ──────────────────
+
+export function renderDivePoints(divePoints, weather) {
+  const container = document.getElementById('dive-points');
+  if (!container) return;
+
+  if (!divePoints || !Array.isArray(divePoints)) {
+    container.classList.remove('skeleton-loading');
+    container.innerHTML = '<div class="dive-point-error">-- ポイント別データの取得に失敗しました --</div>';
+    return;
+  }
+
+  // 風・天気は地域共通（那覇の現在値）、波・うねりはポイント別
+  const windSpeed   = (weather?.current?.wind_speed_10m ?? 10) / 3.6; // km/h → m/s
+  const weatherCode = weather?.current?.weathercode ?? 0;
+
+  const rows = DIVE_POINTS.map((point, i) => {
+    const hourly = divePoints[i]?.hourly;
+    if (!hourly) {
+      return `<div class="dive-point-row">
+        <div class="dp-name"><div class="dp-title">${point.name}</div><div class="dp-note">${point.note}</div></div>
+        <div class="dp-error">-- 取得失敗</div>
+      </div>`;
+    }
+
+    const hIdx    = findCurrentHourIndex(hourly.time ?? []);
+    const wave    = hourly.wave_height?.[hIdx];
+    const swellP  = hourly.swell_wave_period?.[hIdx];
+    const swellD  = hourly.swell_wave_direction?.[hIdx];
+    const curV    = hourly.ocean_current_velocity?.[hIdx];   // km/h
+    const curD    = hourly.ocean_current_direction?.[hIdx];
+
+    const score = calcScore({
+      waveHeight:  wave ?? 1.0,
+      windSpeed,
+      weatherCode,
+      swellPeriod: swellP ?? 8,
+    });
+    const { color } = scoreLabel(score);
+
+    return `<div class="dive-point-row">
+      <div class="dp-name">
+        <div class="dp-title">${point.name}</div>
+        <div class="dp-note">${point.note}</div>
+      </div>
+      <div class="dp-metrics">
+        <div class="dp-metric"><span class="dp-label">波</span><span class="dp-val">${wave != null ? wave.toFixed(1) + 'm' : '--'}</span></div>
+        <div class="dp-metric"><span class="dp-label">うねり</span><span class="dp-val">${swellP != null ? swellP.toFixed(0) + 's' : '--'}${swellD != null ? ' ' + degToCompass(swellD) : ''}</span></div>
+        <div class="dp-metric"><span class="dp-label">潮流</span><span class="dp-val">${curV != null ? (curV / 3.6).toFixed(1) + 'm/s' : '--'}${curD != null ? ' ' + degToCompass(curD) : ''}</span></div>
+      </div>
+      <span class="score-chip" style="background:${color}">${score}</span>
+    </div>`;
+  });
+
+  container.innerHTML = rows.join('');
+  container.classList.remove('skeleton-loading');
 }
 
 // ── 週間カレンダー ─────────────────────────────────────────

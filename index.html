@@ -7,7 +7,9 @@
   <meta name="theme-color" content="#0a1628">
   <title>慶良間ダイビング コンディション</title>
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+          integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
+          crossorigin="anonymous" defer></script>
 </head>
 <body>
 
@@ -140,11 +142,14 @@
       </div>
     </div>
 
-    <!-- ── PAGE 1: 海況（潮汐 + 衛星画像） ── -->
+    <!-- ── PAGE 1: 海況（ポイント別 + 潮汐 + 気象マップ） ── -->
     <div class="page" id="page-marine">
       <div class="page-content page-scroll">
 
-        <h2 class="section-title">📊 今日の潮汐（慶良間）</h2>
+        <h2 class="section-title">🤿 ポイント別コンディション <span class="section-note">（優先度順）</span></h2>
+        <div id="dive-points" class="skeleton-loading"></div>
+
+        <h2 class="section-title" style="margin-top:1.5rem">📊 今日の潮汐（慶良間）</h2>
         <div id="tide-info">
           <div class="tide-badge" id="tide-high">🔼 満潮: <span>--</span></div>
           <div class="tide-badge" id="tide-low">🔽 干潮: <span>--</span></div>
@@ -159,6 +164,8 @@
           <iframe
             src="https://embed.windy.com/embed2.html?lat=26.2&lon=127.4&zoom=7&level=surface&overlay=clouds&product=ecmwf&menu=false&message=false&marker=false&calendar=false&pressure=false&type=map&location=coordinates&detail=false&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1"
             frameborder="0"
+            loading="lazy"
+            referrerpolicy="no-referrer"
             title="沖縄エリア気象マップ">
           </iframe>
         </div>
