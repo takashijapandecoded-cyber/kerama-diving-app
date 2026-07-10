@@ -41,7 +41,11 @@ export function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
     weatherScore * SCORE_WEIGHTS.weather +
     swellScore  * SCORE_WEIGHTS.swellPeriod;
 
-  return Math.round(Math.min(10, Math.max(1, raw)));
+  // 波高がボトルネック: 風・天気が良くても波が高ければ出港できないため、
+  // 総合スコアは波高スコアを超えない（現役ガイド優くんのフィードバック）
+  const capped = Math.min(raw, waveScore);
+
+  return Math.round(Math.min(10, Math.max(1, capped)));
 }
 
 // スコアに対応するラベルと色を返す

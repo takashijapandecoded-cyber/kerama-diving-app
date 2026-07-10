@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { DIVE_POINTS } from '../js/config.js';
+import { calcScore } from '../js/score.js';  // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
 const GMAIL_USER     = process.env.GMAIL_USER;
@@ -65,33 +66,7 @@ function degToCompass(deg) {
   return dirs[Math.round(deg / 45) % 8];
 }
 
-// ── スコア計算（score.js と同じロジック） ──────────────────
-function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
-  const waveScore = waveHeight <= 0.5 ? 10 : waveHeight <= 1.0 ? 8 :
-                    waveHeight <= 1.5 ? 6  : waveHeight <= 2.0 ? 4 :
-                    waveHeight <= 2.5 ? 2  : 0;
-  const windScore = windSpeed <= 5  ? 10 : windSpeed <= 10 ? 8 :
-                    windSpeed <= 15 ? 6  : windSpeed <= 20 ? 3 :
-                    windSpeed <= 25 ? 1  : 0;
-  function scoreWeatherCode(code) {
-    if (code <= 1)  return 10;  // 快晴
-    if (code <= 3)  return 9;   // 晴れ〜曇り
-    if (code <= 49) return 7;   // 霧・靄
-    if (code <= 59) return 5;   // 霧雨
-    if (code <= 69) return 4;   // 雨
-    if (code <= 79) return 3;   // みぞれ・雪
-    if (code <= 82) return 4;   // にわか雨
-    if (code <= 84) return 3;   // 強いにわか雨
-    if (code <= 94) return 6;   // 雷雨なし
-    return 0;                   // 雷雨
-  }
-  const wScore    = scoreWeatherCode(weatherCode);
-  const sScore    = swellPeriod >= 10 ? 10 : swellPeriod >= 8 ? 7 :
-                    swellPeriod >= 6  ? 5  : 3;
-  const raw = waveScore * 0.4 + windScore * 0.35 + wScore * 0.15 + sScore * 0.10;
-  return Math.round(Math.min(10, Math.max(1, raw)));
-}
-
+// ── スコアラベル（メール専用の文言） ───────────────────────
 function scoreText(score) {
   if (score >= 9) return '🌊 絶好のコンディション！';
   if (score >= 7) return '✅ 良好なコンディション';

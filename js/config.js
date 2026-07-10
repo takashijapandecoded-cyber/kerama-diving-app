@@ -24,7 +24,7 @@ export const DIVE_POINTS = [
   { key: 'shimosone', name: '下曽根',         lat: 26.06, lon: 127.24, note: '久場島南・外洋' },
   { key: 'uchizan',   name: 'ウチザン礁',     lat: 26.25, lon: 127.40, note: '前島〜渡嘉敷間・流れ強め' },
   { key: 'kuroshima', name: '黒島北',         lat: 26.24, lon: 127.33, note: 'ツインロック' },
-  { key: 'triangle',  name: 'トライアングル', lat: 26.10, lon: 127.21, note: '上級・ドリフト' },
+  { key: 'triangle',  name: 'トライアングル', lat: 26.055, lon: 127.575, note: '本島南・糸満沖' },
   { key: 'aguni',     name: '粟国（筆ん崎）', lat: 26.57, lon: 127.21, note: '遠征・ギンガメ' },
   { key: 'tonaki',    name: '渡名喜',         lat: 26.37, lon: 127.14, note: '遠征・慶良間北西' },
   { key: 'sugarhill', name: 'シュガーヒル',   lat: 26.26, lon: 127.57, note: 'チービシ・砂の丘' },

@@ -666,6 +666,14 @@ body {
 .formula-row:last-child { border-bottom: none; }
 .formula-factor { color: var(--text); }
 .formula-weight { font-weight: 800; color: var(--accent); }
+.formula-note {
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding-top: 0.5rem;
+  margin-top: 0.3rem;
+  border-top: 1px dashed var(--border);
+  line-height: 1.5;
+}
 
 .guide-criteria {
   background: var(--surface);
