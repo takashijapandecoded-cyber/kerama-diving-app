@@ -129,9 +129,21 @@ export async function fetchDivePoints() {
   return data;
 }
 
-// 3地点＋天気＋EPIC＋ダイビングポイントを並列取得
+// 気象庁: 沖縄本島地方の警報・注意報（無料・キー不要・CORS対応確認済み）
+export async function fetchWarnings() {
+  const cached = fromCache('warnings');
+  if (cached) return cached;
+
+  const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
+  if (!res.ok) throw new Error('気象庁 警報API エラー');
+  const data = await res.json();
+  toCache('warnings', data);
+  return data;
+}
+
+// 3地点＋天気＋EPIC＋ダイビングポイント＋警報を並列取得
 export async function fetchAll() {
-  const [epicResult, weatherResult, nahaResult, routeResult, keramaResult, divePointsResult] =
+  const [epicResult, weatherResult, nahaResult, routeResult, keramaResult, divePointsResult, warningsResult] =
     await Promise.allSettled([
       fetchEpicImage(),
       fetchWeather(),
@@ -139,6 +151,7 @@ export async function fetchAll() {
       fetchMarine('route'),
       fetchMarine('kerama'),
       fetchDivePoints(),
+      fetchWarnings(),
     ]);
 
   return {
@@ -148,5 +161,6 @@ export async function fetchAll() {
     route:      routeResult.status      === 'fulfilled' ? routeResult.value      : null,
     kerama:     keramaResult.status     === 'fulfilled' ? keramaResult.value     : null,
     divePoints: divePointsResult.status === 'fulfilled' ? divePointsResult.value : null,
+    warnings:   warningsResult.status   === 'fulfilled' ? warningsResult.value   : null,
   };
 }

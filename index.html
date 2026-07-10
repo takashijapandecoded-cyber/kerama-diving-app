@@ -50,6 +50,7 @@
       <div class="page-content" id="today-content">
         <div id="hero-location">🤿 慶良間諸島 ダイビングコンディション</div>
         <div id="hero-date"></div>
+        <div id="warning-chips"></div>
 
         <!-- スコアカード -->
         <div id="score-container">
@@ -195,7 +196,7 @@
           </table>
         </div>
         <div id="data-sources" style="margin-top:1.5rem; font-size:0.72rem; color:var(--muted); text-align:center">
-          天気: Open-Meteo JMA ／ 海況: Open-Meteo Marine ／ 衛星: NASA EPIC
+          天気: Open-Meteo JMA ／ 海況: Open-Meteo Marine ／ 警報・注意報: 気象庁 ／ 衛星: NASA EPIC
         </div>
       </div>
     </div>
@@ -280,6 +281,13 @@
             <div>
               <div class="guide-update-name">海況・潮汐 (Marine)</div>
               <div class="guide-update-freq">Open-Meteo Marine · 約1時間毎に更新</div>
+            </div>
+          </div>
+          <div class="guide-update-item">
+            <span class="guide-update-icon">⚠️</span>
+            <div>
+              <div class="guide-update-name">警報・注意報</div>
+              <div class="guide-update-freq">気象庁（沖縄気象台） · 発表され次第随時更新</div>
             </div>
           </div>
           <div class="guide-update-item">

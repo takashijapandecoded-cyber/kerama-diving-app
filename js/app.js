@@ -1,10 +1,12 @@
 import { fetchAll } from './api.js';
 import { calcScore, findCurrentHourIndex } from './score.js';
+import { parseWarnings } from './warnings.js';
 import { SCORE_THRESHOLDS } from './config.js';
 import {
   renderHero,
   renderConditionCards,
   renderDivePoints,
+  renderWarningChips,
   renderCalendar,
   renderTideChart,
   renderForecastTable,
@@ -44,7 +46,8 @@ function dataSignature(weather, kerama) {
   return `${t1}_${t2}`;
 }
 
-function renderAll(epic, weather, naha, route, kerama, divePoints) {
+function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson) {
+  const warnings = parseWarnings(warningsJson);
   const hIdx         = findCurrentHourIndex(kerama?.hourly.time ?? []);
   const currentWave  = kerama?.hourly.wave_height?.[hIdx]       ?? 1.0;
   const currentWind  = (weather?.current?.wind_speed_10m ?? 10) / 3.6;
@@ -56,8 +59,9 @@ function renderAll(epic, weather, naha, route, kerama, divePoints) {
   subScores.temp  = weather?.current?.temperature_2m != null ? Math.round(weather.current.temperature_2m) : null;
 
   renderHero(epic, score, subScores);
+  renderWarningChips(warnings);
   renderConditionCards(weather, naha, route, kerama);
-  renderDivePoints(divePoints, weather);
+  renderDivePoints(divePoints, weather, warnings);
   renderDataInfo(weather);
   renderTideChart(kerama);
   renderCalendar(weather, kerama);
@@ -77,7 +81,7 @@ async function main() {
 
   const data = await fetchAll();
   let currentSig = dataSignature(data.weather, data.kerama);
-  renderAll(data.epic, data.weather, data.naha, data.route, data.kerama, data.divePoints);
+  renderAll(data.epic, data.weather, data.naha, data.route, data.kerama, data.divePoints, data.warnings);
 
   const updateBtn = document.getElementById('update-btn');
   let latestData  = data;
@@ -111,7 +115,7 @@ async function main() {
 
   updateBtn.addEventListener('click', () => {
     currentSig = dataSignature(latestData.weather, latestData.kerama);
-    renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama, latestData.divePoints);
+    renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama, latestData.divePoints, latestData.warnings);
     updateBtn.classList.add('hidden');
   });
 }

@@ -165,9 +165,27 @@ function setCardData(prefix, data) {
   }
 }
 
+// ── 警報・注意報チップ（今日ページ） ────────────────────────
+
+export function renderWarningChips(warnings) {
+  const box = document.getElementById('warning-chips');
+  if (!box) return;
+
+  const items = warnings?.items ?? [];
+  if (!items.length) {
+    box.innerHTML = '';  // 発表なし or 取得失敗 → 何も出さない（画面クリーン）
+    return;
+  }
+
+  box.innerHTML = items.map(w => {
+    const area = w.allAreas ? '' : `<span class="warn-area">・${w.areaLabels.join('・')}</span>`;
+    return `<span class="warn-chip warn-${w.level}">${w.emoji} ${w.name}${area}</span>`;
+  }).join('');
+}
+
 // ── ポイント別コンディション（海況ページ） ──────────────────
 
-export function renderDivePoints(divePoints, weather) {
+export function renderDivePoints(divePoints, weather, warnings) {
   const container = document.getElementById('dive-points');
   if (!container) return;
 
@@ -182,10 +200,16 @@ export function renderDivePoints(divePoints, weather) {
   const weatherCode = weather?.current?.weathercode ?? 0;
 
   const rows = DIVE_POINTS.map((point, i) => {
+    // このポイントのエリアに出とる警報・注意報（深刻度順ソート済みなので先頭が最重要）
+    const pointWarns = warnings?.items?.filter(w => w.areaKeys.includes(point.warnKey)) ?? [];
+    const worst      = pointWarns[0];
+    const rowClass   = worst ? ` has-warn-${worst.level}` : '';
+    const warnBadge  = worst ? `<span class="dp-warn">${worst.emoji}</span>` : '';
+
     const hourly = divePoints[i]?.hourly;
     if (!hourly) {
-      return `<div class="dive-point-row">
-        <div class="dp-name"><div class="dp-title">${point.name}</div><div class="dp-note">${point.note}</div></div>
+      return `<div class="dive-point-row${rowClass}">
+        <div class="dp-name"><div class="dp-title">${point.name}${warnBadge}</div><div class="dp-note">${point.note}</div></div>
         <div class="dp-error">-- 取得失敗</div>
       </div>`;
     }
@@ -205,9 +229,9 @@ export function renderDivePoints(divePoints, weather) {
     });
     const { color } = scoreLabel(score);
 
-    return `<div class="dive-point-row">
+    return `<div class="dive-point-row${rowClass}">
       <div class="dp-name">
-        <div class="dp-title">${point.name}</div>
+        <div class="dp-title">${point.name}${warnBadge}</div>
         <div class="dp-note">${point.note}</div>
       </div>
       <div class="dp-metrics">
@@ -458,5 +482,5 @@ export function renderDataInfo(weather) {
   const timeStr = t
     ? new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) + ' JST'
     : '--';
-  el.innerHTML = `📡 ${timeStr}時点 | JMA予報 · Marine API · NASA EPIC`;
+  el.innerHTML = `📡 ${timeStr}時点 | JMA予報 · Marine API · 気象庁警報 · NASA EPIC`;
 }

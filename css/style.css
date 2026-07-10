@@ -242,6 +242,59 @@ body {
   margin-top: -0.5rem;
 }
 
+/* 警報・注意報チップ（今日ページ） */
+#warning-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  max-width: 340px;
+}
+#warning-chips:empty { display: none; }
+
+@keyframes chip-fade-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.warn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.28rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  backdrop-filter: blur(6px);
+  animation: chip-fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.warn-area { font-weight: 500; opacity: 0.85; }
+
+/* 注意報 = 黄、警報 = 赤（少し大きめ）、特別警報 = 濃赤＋ゆっくりパルス */
+.warn-advisory {
+  background: rgba(245,158,11,0.16);
+  border: 1px solid rgba(245,158,11,0.5);
+  color: #fbbf24;
+}
+.warn-warning {
+  background: rgba(239,68,68,0.20);
+  border: 1px solid rgba(239,68,68,0.65);
+  color: #f87171;
+  font-size: 0.78rem;
+}
+@keyframes warn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.45); }
+  50%       { box-shadow: 0 0 14px 3px rgba(239,68,68,0.55); }
+}
+.warn-emergency {
+  background: rgba(153,27,27,0.4);
+  border: 1px solid #b91c1c;
+  color: #fecaca;
+  font-size: 0.8rem;
+  animation: chip-fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) both,
+             warn-pulse 2.2s ease-in-out infinite;
+}
+
 /* スコアカード */
 #score-container {
   background: rgba(10,30,60,0.55);
@@ -467,6 +520,12 @@ body {
   text-align: center;
   flex: 1;
 }
+
+/* 警報・注意報が出とるポイント行の警戒表示 */
+.dp-warn { font-size: 0.75rem; margin-left: 0.3rem; }
+.dive-point-row.has-warn-advisory { border-left: 3px solid var(--caution); }
+.dive-point-row.has-warn-warning,
+.dive-point-row.has-warn-emergency { border-left: 3px solid var(--danger); }
 
 /* 潮汐 */
 #tide-info {

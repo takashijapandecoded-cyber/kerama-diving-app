@@ -21,15 +21,25 @@ export const LOCATIONS = {
 // 座標はおおよその位置。Marine APIの格子は約5kmなので数百m単位の精度は不要
 // TODO: 優くんに実際のピン位置を確認してもらい必要なら微調整
 export const DIVE_POINTS = [
-  { key: 'shimosone', name: '下曽根',         lat: 26.06, lon: 127.24, note: '久場島南・外洋' },
-  { key: 'uchizan',   name: 'ウチザン礁',     lat: 26.25, lon: 127.40, note: '前島〜渡嘉敷間・流れ強め' },
-  { key: 'kuroshima', name: '黒島北',         lat: 26.24, lon: 127.33, note: 'ツインロック' },
-  { key: 'triangle',  name: 'トライアングル', lat: 26.055, lon: 127.575, note: '本島南・糸満沖' },
-  { key: 'aguni',     name: '粟国（筆ん崎）', lat: 26.57, lon: 127.21, note: '遠征・ギンガメ' },
-  { key: 'tonaki',    name: '渡名喜',         lat: 26.37, lon: 127.14, note: '遠征・慶良間北西' },
-  { key: 'sugarhill', name: 'シュガーヒル',   lat: 26.26, lon: 127.57, note: 'チービシ・砂の丘' },
-  { key: 'kuefu',     name: 'クエフ北',       lat: 26.25, lon: 127.59, note: 'チービシ・近場' },
+  { key: 'shimosone', name: '下曽根',         lat: 26.06, lon: 127.24, note: '久場島南・外洋',           warnKey: 'kerama' },
+  { key: 'uchizan',   name: 'ウチザン礁',     lat: 26.25, lon: 127.40, note: '前島〜渡嘉敷間・流れ強め', warnKey: 'kerama' },
+  { key: 'kuroshima', name: '黒島北',         lat: 26.24, lon: 127.33, note: 'ツインロック',             warnKey: 'kerama' },
+  { key: 'triangle',  name: 'トライアングル', lat: 26.055, lon: 127.575, note: '本島南・糸満沖',         warnKey: 'itoman' },
+  { key: 'aguni',     name: '粟国（筆ん崎）', lat: 26.57, lon: 127.21, note: '遠征・ギンガメ',           warnKey: 'aguni' },
+  { key: 'tonaki',    name: '渡名喜',         lat: 26.37, lon: 127.14, note: '遠征・慶良間北西',         warnKey: 'tonaki' },
+  { key: 'sugarhill', name: 'シュガーヒル',   lat: 26.26, lon: 127.57, note: 'チービシ・砂の丘',         warnKey: 'kerama' },
+  { key: 'kuefu',     name: 'クエフ北',       lat: 26.25, lon: 127.59, note: 'チービシ・近場',           warnKey: 'kerama' },
 ];
+
+// 気象庁 警報・注意報の監視対象エリア（市町村コード）
+// チービシ（ナガンヌ・クエフ）は行政上は渡嘉敷村のため kerama に含む
+export const WARNING_AREAS = {
+  naha:   { codes: ['4720100'], label: '那覇' },
+  kerama: { codes: ['4735300', '4735400'], label: '慶良間' }, // 渡嘉敷村＋座間味村
+  itoman: { codes: ['4721000'], label: '糸満' },              // トライアングル
+  aguni:  { codes: ['4734800'], label: '粟国' },
+  tonaki: { codes: ['4735000'], label: '渡名喜' },
+};
 
 // NASA EPIC API キー（無料のDEMO_KEYを使用）
 // DEMO_KEYは日40回の制限あり。本番では https://api.nasa.gov で無料APIキーを取得してGitHub Secretsに設定推奨

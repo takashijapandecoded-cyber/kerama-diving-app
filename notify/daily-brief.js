@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { DIVE_POINTS } from '../js/config.js';
-import { calcScore } from '../js/score.js';  // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
+import { calcScore } from '../js/score.js';       // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
+import { parseWarnings } from '../js/warnings.js'; // 警報・注意報の解析もアプリと共用
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
 const GMAIL_USER     = process.env.GMAIL_USER;
@@ -58,6 +59,32 @@ async function fetchDivePoints() {
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`fetchDivePoints failed: ${res.status} ${res.statusText}`);
   return res.json();
+}
+
+// 気象庁: 沖縄本島地方の警報・注意報
+async function fetchWarningsJma() {
+  const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
+  if (!res.ok) throw new Error(`fetchWarningsJma failed: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// ── 警報・注意報欄を生成 ───────────────────────────────────
+function buildWarningsSection(warningsJson) {
+  const parsed = parseWarnings(warningsJson);
+  if (!parsed) return '';  // 取得失敗時はセクションごと省略（メール自体は送る）
+
+  const timeStr = parsed.reportDatetime
+    ? new Date(parsed.reportDatetime).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
+    : '';
+  const header = `━━━ 発表中の警報・注意報（気象庁${timeStr ? ` ${timeStr}発表` : ''}） ━━━`;
+
+  if (!parsed.items.length) {
+    return `\n${header}\n✅ 現在、警報・注意報はありません\n`;
+  }
+  const lines = parsed.items.map(w =>
+    `${w.emoji} ${w.name}（${w.allAreas ? '全域' : w.areaLabels.join('・')}）`
+  );
+  return `\n${header}\n${lines.join('\n')}\n`;
 }
 
 // ── 風向変換 ───────────────────────────────────────────────
@@ -155,7 +182,7 @@ ${lines.join('\n')}
 }
 
 // ── メール本文を生成 ───────────────────────────────────────
-function buildEmailBody({ score, weather, naha, route, kerama, divePoints, todayStr, hIdx = 0 }) {
+function buildEmailBody({ score, weather, naha, route, kerama, divePoints, warningsJson, todayStr, hIdx = 0 }) {
   const wCode    = weather.current.weathercode;
   const windKmh  = weather.current.wind_speed_10m.toFixed(0);
   const windDeg  = weather.current.wind_direction_10m;
@@ -220,7 +247,7 @@ function buildEmailBody({ score, weather, naha, route, kerama, divePoints, today
 ━━━ 今日の出港判断 ━━━
 コンディションスコア: ${score}/10
 ${scoreText(score)}
-
+${buildWarningsSection(warningsJson)}
 ━━━ 3地点の状況 ━━━
 📍 那覇港沖:  波${nahaWave}m / 風${windKmh}km/h ${windDir}
 ⛵ 航路中間:  波${routeWave}m
@@ -262,8 +289,9 @@ async function main() {
     fetchMarine('route'),
     fetchMarine('kerama'),
     fetchDivePoints(),
+    fetchWarningsJma(),
   ]);
-  const [weather, naha, route, kerama, divePoints] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+  const [weather, naha, route, kerama, divePoints, warningsJson] = results.map(r => r.status === 'fulfilled' ? r.value : null);
   if (!weather || !kerama) {
     console.error('⚠️ 必須データ（天気/慶良間）の取得に失敗しました。メール送信をスキップします。');
     process.exit(1);
@@ -284,7 +312,7 @@ async function main() {
     swellPeriod: kerama.hourly.swell_wave_period?.[hIdx] ?? 8,
   });
 
-  const body = buildEmailBody({ score, weather, naha, route, kerama, divePoints, todayStr, hIdx });
+  const body = buildEmailBody({ score, weather, naha, route, kerama, divePoints, warningsJson, todayStr, hIdx });
 
   // DRY_RUN=1 なら送信せずに本文を表示して終了（ローカルテスト用）
   if (process.env.DRY_RUN) {
