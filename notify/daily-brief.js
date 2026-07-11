@@ -73,6 +73,14 @@ function buildWarningsSection(warningsJson) {
   const parsed = parseWarnings(warningsJson);
   if (!parsed) return '';  // 取得失敗時はセクションごと省略（メール自体は送る）
 
+  // 鮮度ガード発動: 古いデータで誤誘導せず、正直に伝える
+  if (parsed.stale) {
+    const lastStr = parsed.reportDatetime
+      ? new Date(parsed.reportDatetime).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric' })
+      : '不明';
+    return `\n━━━ 発表中の警報・注意報 ━━━\n⚠️ 気象庁の警報データが更新停止中のため表示できません（最終更新: ${lastStr}）\n→ 最新は https://www.jma.go.jp/bosai/warning/ で確認してください\n`;
+  }
+
   const timeStr = parsed.reportDatetime
     ? new Date(parsed.reportDatetime).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' })
     : '';

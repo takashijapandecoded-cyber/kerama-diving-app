@@ -37,11 +37,22 @@ const LEVEL_ORDER = { emergency: 0, warning: 1, advisory: 2 };
 // 「解除」や「発表警報・注意報はなし」は無効。発表・継続のみ有効
 const ACTIVE_STATUS = new Set(['発表', '継続', '特別警報から警報', '特別警報から注意報', '警報から注意報']);
 
+// 鮮度ガード: 発表時刻がこれより古いデータは「配信停止中」とみなして表示しない
+// （2026/7に bosai JSON の配信が6週間止まる事象が実際に発生。古い警報での誤誘導を防ぐ）
+const STALE_MS = 48 * 60 * 60 * 1000; // 48時間
+
 // 気象庁の警報JSONから、監視エリア（WARNING_AREAS）の発表中警報・注意報を集約
-// 戻り値: { items: [{code, name, emoji, level, areaKeys, areaLabels, allAreas}], reportDatetime }
+// 戻り値: { items: [...], reportDatetime, stale }
+//   - stale: true なら発表時刻が古すぎる（items は空にして返す）
 // json が不正なら null（呼び出し側は表示スキップ）
-export function parseWarnings(json) {
+export function parseWarnings(json, now = Date.now()) {
   if (!json?.areaTypes) return null;
+
+  const reportDatetime = json.reportDatetime ?? null;
+  const reportTime = reportDatetime ? new Date(reportDatetime).getTime() : NaN;
+  if (!Number.isFinite(reportTime) || now - reportTime > STALE_MS) {
+    return { items: [], reportDatetime, stale: true };
+  }
 
   // 自治体コード → エリアキーの逆引き表
   const codeToArea = {};
@@ -80,5 +91,5 @@ export function parseWarnings(json) {
   // 深刻度順（特別警報 → 警報 → 注意報）
   items.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] || a.code.localeCompare(b.code));
 
-  return { items, reportDatetime: json.reportDatetime ?? null };
+  return { items, reportDatetime, stale: false };
 }
