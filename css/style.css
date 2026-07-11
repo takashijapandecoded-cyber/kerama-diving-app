@@ -522,10 +522,25 @@ body {
 }
 
 /* 警報・注意報が出とるポイント行の警戒表示 */
-.dp-warn { font-size: 0.75rem; margin-left: 0.3rem; }
 .dive-point-row.has-warn-advisory { border-left: 3px solid var(--caution); }
 .dive-point-row.has-warn-warning,
 .dive-point-row.has-warn-emergency { border-left: 3px solid var(--danger); }
+
+/* ポイント名の下に警報名を小さく表示 */
+.dp-warns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.4rem;
+  margin-top: 0.15rem;
+}
+.dp-warn-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.dp-warn-label.lvl-advisory  { color: #fbbf24; }
+.dp-warn-label.lvl-warning   { color: #f87171; }
+.dp-warn-label.lvl-emergency { color: #fca5a5; text-shadow: 0 0 6px rgba(239,68,68,0.6); }
 
 /* 潮汐 */
 #tide-info {

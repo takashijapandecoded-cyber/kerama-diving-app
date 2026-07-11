@@ -204,12 +204,15 @@ export function renderDivePoints(divePoints, weather, warnings) {
     const pointWarns = warnings?.items?.filter(w => w.areaKeys.includes(point.warnKey)) ?? [];
     const worst      = pointWarns[0];
     const rowClass   = worst ? ` has-warn-${worst.level}` : '';
-    const warnBadge  = worst ? `<span class="dp-warn">${worst.emoji}</span>` : '';
+    // 警報名を全部小さく表示（絵文字だけだと種類が分からんため）
+    const warnLabels = pointWarns.length
+      ? `<div class="dp-warns">${pointWarns.map(w => `<span class="dp-warn-label lvl-${w.level}">${w.emoji}${w.name}</span>`).join('')}</div>`
+      : '';
 
     const hourly = divePoints[i]?.hourly;
     if (!hourly) {
       return `<div class="dive-point-row${rowClass}">
-        <div class="dp-name"><div class="dp-title">${point.name}${warnBadge}</div><div class="dp-note">${point.note}</div></div>
+        <div class="dp-name"><div class="dp-title">${point.name}</div><div class="dp-note">${point.note}</div>${warnLabels}</div>
         <div class="dp-error">-- 取得失敗</div>
       </div>`;
     }
@@ -231,8 +234,9 @@ export function renderDivePoints(divePoints, weather, warnings) {
 
     return `<div class="dive-point-row${rowClass}">
       <div class="dp-name">
-        <div class="dp-title">${point.name}${warnBadge}</div>
+        <div class="dp-title">${point.name}</div>
         <div class="dp-note">${point.note}</div>
+        ${warnLabels}
       </div>
       <div class="dp-metrics">
         <div class="dp-metric"><span class="dp-label">波</span><span class="dp-val">${wave != null ? wave.toFixed(1) + 'm' : '--'}</span></div>
