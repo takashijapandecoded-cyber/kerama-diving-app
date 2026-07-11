@@ -37,6 +37,58 @@ const LEVEL_ORDER = { emergency: 0, warning: 1, advisory: 2 };
 // 「解除」や「発表警報・注意報はなし」は無効。発表・継続のみ有効
 const ACTIVE_STATUS = new Set(['発表', '継続', '特別警報から警報', '特別警報から注意報', '警報から注意報']);
 
+// ── 防災情報XML（正式配信ルート）からの取得 ─────────────────
+// bosai JSON が2026/7に配信停止した際の乗り換え先。
+// Atomフィード → 最新の沖縄気象台 VPWW54（気象警報・注意報 H27形式）→ bosai JSON互換に変換
+
+const XML_FEED_URL = 'https://www.data.jma.go.jp/developer/xml/feed/extra.xml';
+
+// フィードから最新の沖縄警報XML（VPWW54_471000）のURLを返す（フィードは新しい順）
+export function pickLatestWarningXmlUrl(feedText) {
+  const m = feedText.match(/href="(https:\/\/www\.data\.jma\.go\.jp\/[^"]*_VPWW54_471000\.xml)"/);
+  return m ? m[1] : null;
+}
+
+// VPWW54 XML を bosai JSON 互換の形 { reportDatetime, areaTypes } に変換
+// （parseWarnings・鮮度ガードをそのまま再利用するため）
+export function xmlToWarningJson(xmlText) {
+  const dtMatch = xmlText.match(/<ReportDateTime>([^<]+)<\/ReportDateTime>/);
+  if (!dtMatch) return null;
+
+  // 市町村単位のブロックだけを対象にする（他に地域まとめ・時系列ブロックがある）
+  const blockMatch = xmlText.match(/<Warning type="気象警報・注意報（市町村等）">([\s\S]*?)<\/Warning>/);
+  if (!blockMatch) return null;
+
+  const areas = [];
+  for (const item of blockMatch[1].match(/<Item>[\s\S]*?<\/Item>/g) ?? []) {
+    const areaCode = item.match(/<Area>[\s\S]*?<Code>(\d+)<\/Code>/)?.[1];
+    if (!areaCode) continue;
+    const warnings = [];
+    for (const kind of item.match(/<Kind>[\s\S]*?<\/Kind>/g) ?? []) {
+      const code   = kind.match(/<Code>(\d+)<\/Code>/)?.[1];
+      const status = kind.match(/<Status>([^<]+)<\/Status>/)?.[1];
+      if (code && status) warnings.push({ code, status });
+    }
+    areas.push({ code: areaCode, warnings });
+  }
+
+  return { reportDatetime: dtMatch[1], areaTypes: [{ areas }] };
+}
+
+// フィード→XML→変換 の一連の取得（ブラウザ・Node共用）
+export async function fetchWarningsViaXml() {
+  const feedRes = await fetch(XML_FEED_URL);
+  if (!feedRes.ok) throw new Error('気象庁XMLフィード取得エラー');
+  const url = pickLatestWarningXmlUrl(await feedRes.text());
+  if (!url) throw new Error('沖縄の警報XMLがフィードに見つかりません');
+
+  const xmlRes = await fetch(url);
+  if (!xmlRes.ok) throw new Error('気象庁警報XML取得エラー');
+  const json = xmlToWarningJson(await xmlRes.text());
+  if (!json) throw new Error('気象庁警報XMLの解析に失敗');
+  return json;
+}
+
 // 鮮度ガード: 発表時刻がこれより古いデータは「配信停止中」とみなして表示しない
 // （2026/7に bosai JSON の配信が6週間止まる事象が実際に発生。古い警報での誤誘導を防ぐ）
 const STALE_MS = 48 * 60 * 60 * 1000; // 48時間

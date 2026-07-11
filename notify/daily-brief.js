@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { DIVE_POINTS } from '../js/config.js';
 import { calcScore } from '../js/score.js';       // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
-import { parseWarnings } from '../js/warnings.js'; // 警報・注意報の解析もアプリと共用
+import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
 const GMAIL_USER     = process.env.GMAIL_USER;
@@ -62,10 +62,15 @@ async function fetchDivePoints() {
 }
 
 // 気象庁: 沖縄本島地方の警報・注意報
+// 第一候補: 防災情報XML（正式配信） / 予備: bosai JSON（2026/7に停止歴あり）
 async function fetchWarningsJma() {
-  const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
-  if (!res.ok) throw new Error(`fetchWarningsJma failed: ${res.status} ${res.statusText}`);
-  return res.json();
+  try {
+    return await fetchWarningsViaXml();
+  } catch {
+    const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
+    if (!res.ok) throw new Error(`fetchWarningsJma failed: ${res.status} ${res.statusText}`);
+    return res.json();
+  }
 }
 
 // ── 警報・注意報欄を生成 ───────────────────────────────────

@@ -1,4 +1,5 @@
 import { LOCATIONS, DIVE_POINTS, NASA_API_KEY } from './config.js';
+import { fetchWarningsViaXml } from './warnings.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5分キャッシュ
 
@@ -129,14 +130,21 @@ export async function fetchDivePoints() {
   return data;
 }
 
-// 気象庁: 沖縄本島地方の警報・注意報（無料・キー不要・CORS対応確認済み）
+// 気象庁: 沖縄本島地方の警報・注意報
+// 第一候補: 防災情報XML（正式配信・稼働中） / 予備: bosai JSON（2026/7に停止歴あり）
+// どちらのルートでも parseWarnings の鮮度ガード（48h）が最終防衛線になる
 export async function fetchWarnings() {
   const cached = fromCache('warnings');
   if (cached) return cached;
 
-  const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
-  if (!res.ok) throw new Error('気象庁 警報API エラー');
-  const data = await res.json();
+  let data;
+  try {
+    data = await fetchWarningsViaXml();
+  } catch {
+    const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
+    if (!res.ok) throw new Error('気象庁 警報API エラー');
+    data = await res.json();
+  }
   toCache('warnings', data);
   return data;
 }
