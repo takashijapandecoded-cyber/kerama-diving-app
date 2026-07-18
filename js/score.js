@@ -1,4 +1,4 @@
-import { SCORE_THRESHOLDS, SCORE_WEIGHTS } from './config.js';
+import { SCORE_THRESHOLDS, SCORE_WEIGHTS, WAVE_PENALTY_FACTOR } from './config.js';
 
 function scoreFromTable(value, table) {
   for (const entry of table) {
@@ -41,11 +41,15 @@ export function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
     weatherScore * SCORE_WEIGHTS.weather +
     swellScore  * SCORE_WEIGHTS.swellPeriod;
 
-  // 波高がボトルネック: 風・天気が良くても波が高ければ出港できないため、
-  // 総合スコアは波高スコアを超えない（現役ガイド優くんのフィードバック）
-  const capped = Math.min(raw, waveScore);
+  // 波高ペナルティ: 出港のボトルネックは波高（優くんフィードバック）やけど、
+  // 完全キャップは厳しすぎたため、超過分に係数を掛けて減点する中間方式
+  const excess = Math.max(0, raw - waveScore);
+  let adjusted = raw - excess * WAVE_PENALTY_FACTOR;
 
-  return Math.round(Math.min(10, Math.max(1, capped)));
+  // 安全ルール: 波高スコア0（波2.5m超）の日は係数に関係なく最大2（出港困難）
+  if (waveScore === 0) adjusted = Math.min(adjusted, 2);
+
+  return Math.round(Math.min(10, Math.max(1, adjusted)));
 }
 
 // スコアに対応するラベルと色を返す

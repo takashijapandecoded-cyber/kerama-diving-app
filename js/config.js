@@ -79,6 +79,13 @@ export const SCORE_WEIGHTS = {
   swellPeriod: 0.10,
 };
 
+// 波高ペナルティ係数（優くんの体感に合わせて調整するレバー）
+// 加重平均が波高スコアを超えた分に掛ける減点率:
+//   0.0 = 旧方式（加重平均のみ・甘い）
+//   0.5 = 中間（現在の設定）
+//   1.0 = 完全キャップ（総合は波高スコアが天井・辛い）
+export const WAVE_PENALTY_FACTOR = 0.5;
+
 // 週間カレンダー用: スコアしきい値
 export const CALENDAR_THRESHOLD = {
   good: 7,    // 7以上 → ✅
