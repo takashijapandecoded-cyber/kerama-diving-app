@@ -3,6 +3,21 @@ import { fetchWarningsViaXml } from './warnings.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5分キャッシュ
 
+// タイムアウトつきfetch（1つのAPIの応答待ちで画面全体が固まるのを防ぐ）。
+// 安全に関わるデータ源は1回だけ再試行する
+const FETCH_TIMEOUT_MS = 10 * 1000;
+async function fetchOk(url, { retries = 1, timeoutMs = FETCH_TIMEOUT_MS, label = 'API' } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout?.(timeoutMs) });
+      if (!res.ok) throw new Error(`${label} エラー (HTTP ${res.status})`);
+      return res;
+    } catch (err) {
+      if (attempt >= retries) throw err;
+    }
+  }
+}
+
 function cacheKey(name) {
   const dateStr = new Date().toISOString().slice(0, 13); // 1時間単位
   return `diving_cache_${name}_${dateStr}`;
@@ -31,10 +46,11 @@ export async function fetchEpicImage() {
   const cached = fromCache('epic');
   if (cached) return cached;
 
-  const res = await fetch(
-    `https://api.nasa.gov/EPIC/api/natural?api_key=${NASA_API_KEY}`
+  // 背景画像は装飾なので粘らない（再試行なし・短めタイムアウト）
+  const res = await fetchOk(
+    `https://api.nasa.gov/EPIC/api/natural?api_key=${NASA_API_KEY}`,
+    { retries: 0, timeoutMs: 6000, label: 'NASA EPIC' }
   );
-  if (!res.ok) throw new Error('NASA EPIC API エラー');
   const images = await res.json();
   if (!images.length) throw new Error('EPIC 画像なし');
 
@@ -65,8 +81,7 @@ export async function fetchWeather() {
   url.searchParams.set('forecast_days', '7');
   url.searchParams.set('wind_speed_unit', 'kmh');
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Open-Meteo 天気 API エラー');
+  const res = await fetchOk(url, { label: 'Open-Meteo 天気' });
   const data = await res.json();
   toCache('weather', data);
   return data;
@@ -96,8 +111,7 @@ export async function fetchMarine(locationKey) {
   url.searchParams.set('timezone', 'Asia/Tokyo');
   url.searchParams.set('forecast_days', '7');
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo Marine API エラー (${locationKey})`);
+  const res = await fetchOk(url, { label: `Open-Meteo Marine (${locationKey})` });
   const data = await res.json();
   toCache(cacheKeyName, data);
   return data;
@@ -123,8 +137,7 @@ export async function fetchDivePoints() {
   url.searchParams.set('timezone', 'Asia/Tokyo');
   url.searchParams.set('forecast_days', '2');
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Open-Meteo Marine API エラー (dive points)');
+  const res = await fetchOk(url, { label: 'Open-Meteo Marine (dive points)' });
   const data = await res.json();
   toCache('divepoints', data);
   return data;
@@ -141,8 +154,7 @@ export async function fetchWarnings() {
   try {
     data = await fetchWarningsViaXml();
   } catch {
-    const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
-    if (!res.ok) throw new Error('気象庁 警報API エラー');
+    const res = await fetchOk('https://www.jma.go.jp/bosai/warning/data/warning/471000.json', { label: '気象庁 警報' });
     data = await res.json();
   }
   toCache('warnings', data);

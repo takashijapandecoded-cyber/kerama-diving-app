@@ -41,6 +41,19 @@ export const WARNING_AREAS = {
   tonaki: { codes: ['4735000'], label: '渡名喜' },
 };
 
+// 警報スコア連動（2026-07-19 評議会 裁可項目1）
+// 海に関わる警報・注意報の発表中は、モデル値が穏やかでもスコアに上限を掛ける
+// （気象庁の公式警報を自作スコアが黙殺しない構造にするため）
+export const SEA_WARNING_CODES = new Set([
+  '02', '05', '07', '08', // 暴風雪・暴風・波浪・高潮 警報
+  '15', '16', '19',       // 強風・波浪・高潮 注意報
+]);
+export const WARNING_SCORE_CAPS = {
+  emergency: 1, // 特別警報（全種）: キャンセル推奨まで
+  warning:   3, // 海関連の警報: 出港困難まで
+  advisory:  6, // 海関連の注意報: 要確認まで（出港OKは出さない）
+};
+
 // NASA EPIC API キー（無料のDEMO_KEYを使用）
 // DEMO_KEYは日40回の制限あり。本番では https://api.nasa.gov で無料APIキーを取得してGitHub Secretsに設定推奨
 export const NASA_API_KEY = 'DEMO_KEY';

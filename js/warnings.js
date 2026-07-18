@@ -44,11 +44,34 @@ const ACTIVE_STATUS = new Set(['発表', '継続', '特別警報から警報', '
 const XML_FEED_URL      = 'https://www.data.jma.go.jp/developer/xml/feed/extra.xml';   // 直近約10時間
 const XML_FEED_LONG_URL = 'https://www.data.jma.go.jp/developer/xml/feed/extra_l.xml'; // 直近約1週間（約3MB）
 
+// フェッチのタイムアウト（応答待ちで画面全体が固まるのを防ぐ）
+const FETCH_TIMEOUT_MS = 10 * 1000;
+function timeoutSignal() { try { return AbortSignal.timeout?.(FETCH_TIMEOUT_MS); } catch { return undefined; } }
+
 // 平穏な日は短期フィードに警報エントリが無い（発表が無い＝平穏）ため、
-// 一度見つけたXMLのURLを覚えておき、次回以降は3MBの長期フィードを再取得せずに済ませる
-const MEMO_KEY = 'diving_warnings_xml_url';
-function memoGet() { try { return globalThis.sessionStorage?.getItem(MEMO_KEY) ?? null; } catch { return null; } }
-function memoSet(url) { try { globalThis.sessionStorage?.setItem(MEMO_KEY, url); } catch { /* 無視 */ } }
+// 長期フィードで確定したXMLのURLを時刻つきで覚えておき、3MBの再取得を減らす。
+// 記憶を信用してええのは「短期フィードが生きとって沖縄エントリが無い」かつ
+// 「確定から6時間以内」のときだけ: それより新しい発表があれば必ず短期フィード
+// （約10時間分）に載るため、この条件下では記憶＝最新が保証される。
+// 無条件に記憶を優先すると新しい警報を見逃す（2026-07-19 評議会 裁可項目8）
+const MEMO_KEY = 'diving_warnings_xml_url_v2';
+const MEMO_TRUST_MS = 6 * 60 * 60 * 1000;
+function memoGet() {
+  try { return JSON.parse(globalThis.sessionStorage?.getItem(MEMO_KEY)); } catch { return null; }
+}
+function memoSet(url) {
+  try { globalThis.sessionStorage?.setItem(MEMO_KEY, JSON.stringify({ url, at: Date.now() })); } catch { /* 無視 */ }
+}
+
+// フィード自体の生存確認: 全国分のフィードは平常時でも数分おきに更新されるため、
+// <updated> が6時間以上古ければ配信側の停止とみなす（bosai凍結の教訓。
+// 「平穏で新発表が無い」と「配信が死んで届かん」を区別するための仕組み）
+const FEED_ALIVE_MS = 6 * 60 * 60 * 1000;
+export function feedIsAlive(feedText, now = Date.now()) {
+  const m = feedText.match(/<updated>([^<]+)<\/updated>/);
+  const t = m ? new Date(m[1]).getTime() : NaN;
+  return Number.isFinite(t) && now - t <= FEED_ALIVE_MS;
+}
 
 // フィードから最新の沖縄警報XML（VPWW54_471000）のURLを返す（フィードは新しい順）
 export function pickLatestWarningXmlUrl(feedText) {
@@ -85,7 +108,7 @@ export function xmlToWarningJson(xmlText) {
 }
 
 async function fetchAndConvert(url) {
-  const xmlRes = await fetch(url);
+  const xmlRes = await fetch(url, { signal: timeoutSignal() });
   if (!xmlRes.ok) throw new Error('気象庁警報XML取得エラー');
   const json = xmlToWarningJson(await xmlRes.text());
   if (!json) throw new Error('気象庁警報XMLの解析に失敗');
@@ -93,23 +116,26 @@ async function fetchAndConvert(url) {
 }
 
 // フィード→XML→変換 の一連の取得（ブラウザ・Node共用）
-// 短期フィード → (無ければ) 記憶済みURL → (無ければ) 長期フィード の順で探す
+// 短期フィード → (無ければ) 信用期間内の記憶URL → 長期フィード の順で探す
 export async function fetchWarningsViaXml() {
-  const feedRes = await fetch(XML_FEED_URL);
+  const feedRes = await fetch(XML_FEED_URL, { signal: timeoutSignal() });
   if (!feedRes.ok) throw new Error('気象庁XMLフィード取得エラー');
-  const url = pickLatestWarningXmlUrl(await feedRes.text());
+  const feedText = await feedRes.text();
+  if (!feedIsAlive(feedText)) throw new Error('気象庁XMLフィードが更新停止中');
+  const url = pickLatestWarningXmlUrl(feedText);
   if (url) {
     memoSet(url);
     return fetchAndConvert(url);
   }
 
-  // 短期フィードに無い＝直近10時間発表なし（平穏）。記憶済みURLがあればそれが最新
-  const memoUrl = memoGet();
-  if (memoUrl) {
-    try { return await fetchAndConvert(memoUrl); } catch { /* 古すぎて消えた場合は長期へ */ }
+  // 短期フィードに無い＝直近10時間発表なし（平穏）。
+  // 信用期間内の記憶URLがあれば最新が保証される（上記コメント参照）
+  const memo = memoGet();
+  if (memo?.url && Date.now() - memo.at < MEMO_TRUST_MS) {
+    try { return await fetchAndConvert(memo.url); } catch { /* 消えた場合は長期へ */ }
   }
 
-  const longRes = await fetch(XML_FEED_LONG_URL);
+  const longRes = await fetch(XML_FEED_LONG_URL, { signal: timeoutSignal() });
   if (!longRes.ok) throw new Error('気象庁XML長期フィード取得エラー');
   const longUrl = pickLatestWarningXmlUrl(await longRes.text());
   if (!longUrl) throw new Error('沖縄の警報XMLがフィードに見つかりません');

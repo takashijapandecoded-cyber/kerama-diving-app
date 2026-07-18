@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+# デプロイに書き込み権限は不要（secretsの露出面を最小に）
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,7 +18,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Vercel CLI インストール
-        run: npm install -g vercel@latest
+        # @latest だと未検証・侵害版のCLIをsecrets付きで即実行してしまうためバージョン固定
+        run: npm install -g vercel@56.3.2
 
       - name: Vercel に本番デプロイ＆エイリアス更新
         env:

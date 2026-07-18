@@ -1,7 +1,6 @@
 import { fetchAll } from './api.js';
-import { calcScore, findCurrentHourIndex } from './score.js';
+import { calcScore, calcSubScores, warningScoreCap, findCurrentHourIndex } from './score.js';
 import { parseWarnings } from './warnings.js';
-import { SCORE_THRESHOLDS } from './config.js';
 import {
   renderHero,
   renderConditionCards,
@@ -14,30 +13,6 @@ import {
   renderDataInfo,
 } from './ui.js';
 
-// 各要素の個別スコアを計算して内訳チップ用に返す
-function calcSubScores({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
-  function fromTable(v, table) {
-    for (const e of table) if (v <= e.max) return e.score;
-    return 0;
-  }
-  function swellScore(p) {
-    for (const e of SCORE_THRESHOLDS.swellPeriod) if (p >= e.min) return e.score;
-    return 3;
-  }
-  function weatherScore(c) {
-    if (c <= 1) return 10; if (c <= 3) return 9; if (c <= 49) return 7;
-    if (c <= 59) return 5; if (c <= 69) return 4; if (c <= 79) return 3;
-    if (c <= 82) return 4; if (c <= 84) return 3; if (c <= 94) return 6;
-    return 0;
-  }
-  return {
-    wave:    fromTable(waveHeight, SCORE_THRESHOLDS.wave),
-    wind:    fromTable(windSpeed,  SCORE_THRESHOLDS.wind),
-    weather: weatherScore(weatherCode),
-    swell:   swellScore(swellPeriod),
-  };
-}
-
 // データの「署名」を作る（APIの更新タイムスタンプで判定）
 function dataSignature(weather, kerama) {
   const t1 = weather?.current?.time ?? '';
@@ -48,25 +23,33 @@ function dataSignature(weather, kerama) {
 
 function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson) {
   const warnings = parseWarnings(warningsJson);
-  const hIdx         = findCurrentHourIndex(kerama?.hourly.time ?? []);
-  const currentWave  = kerama?.hourly.wave_height?.[hIdx]       ?? 1.0;
-  const currentWind  = (weather?.current?.wind_speed_10m ?? 10) / 3.6;
-  const currentCode  = weather?.current?.weathercode            ?? 0;
-  const currentSwell = kerama?.hourly.swell_wave_period?.[hIdx] ?? 8;
 
-  const score     = calcScore({ waveHeight: currentWave, windSpeed: currentWind, weatherCode: currentCode, swellPeriod: currentSwell });
-  const subScores = calcSubScores({ waveHeight: currentWave, windSpeed: currentWind, weatherCode: currentCode, swellPeriod: currentSwell });
+  // フェイルセーフ（2026-07-19 評議会 裁可項目1）:
+  // 欠損を「良好」な値で埋めない。波・風が取れんときは calcScore が null（判定不能）を返し、
+  // renderHero が灰色の「判定不能」を表示する。現在時刻がデータに無い（＝古い・凍結）場合も同じ扱い
+  const hIdx         = findCurrentHourIndex(kerama?.hourly?.time ?? []);
+  const currentWave  = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx] : undefined;
+  const currentSwell = hIdx >= 0 ? kerama.hourly.swell_wave_period?.[hIdx] : undefined;
+  const currentWind  = weather?.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined;
+  const currentCode  = weather?.current?.weathercode;
+
+  const inputs    = { waveHeight: currentWave, windSpeed: currentWind, weatherCode: currentCode, swellPeriod: currentSwell };
+  const rawScore  = calcScore(inputs);
+  // 気象庁の警報・注意報が発表中はスコアに上限（官の警報を自作スコアが黙殺しない）
+  const cap       = warningScoreCap(warnings);
+  const score     = rawScore == null ? null : Math.min(rawScore, cap);
+  const subScores = calcSubScores(inputs);
   subScores.temp  = weather?.current?.temperature_2m != null ? Math.round(weather.current.temperature_2m) : null;
 
-  renderHero(epic, score, subScores);
+  renderHero(epic, score, subScores, { capped: rawScore != null && cap < rawScore });
   renderWarningChips(warnings);
   renderConditionCards(weather, naha, route, kerama);
   renderDivePoints(divePoints, weather, warnings);
   renderDataInfo(weather);
   renderTideChart(kerama);
   renderCalendar(weather, kerama);
-  renderForecastTable(weather, kerama);
-  renderFooter();
+  renderForecastTable(weather, kerama, warnings);
+  renderFooter(weather);
 }
 
 async function main() {
@@ -79,7 +62,10 @@ async function main() {
     });
   }
 
-  const data = await fetchAll();
+  // ?debug=nodata で全データ欠損時の画面（判定不能表示）を再現できる（動作確認用）
+  const data = new URLSearchParams(location.search).get('debug') === 'nodata'
+    ? { epic: null, weather: null, naha: null, route: null, kerama: null, divePoints: null, warnings: null }
+    : await fetchAll();
   let currentSig = dataSignature(data.weather, data.kerama);
   renderAll(data.epic, data.weather, data.naha, data.route, data.kerama, data.divePoints, data.warnings);
 

@@ -1,4 +1,4 @@
-import { SCORE_THRESHOLDS, SCORE_WEIGHTS, WAVE_PENALTY_FACTOR } from './config.js';
+import { SCORE_THRESHOLDS, SCORE_WEIGHTS, WAVE_PENALTY_FACTOR, SEA_WARNING_CODES, WARNING_SCORE_CAPS } from './config.js';
 
 function scoreFromTable(value, table) {
   for (const entry of table) {
@@ -29,11 +29,14 @@ function scoreWeatherCode(code) {
 }
 
 // 総合コンディションスコアを計算（1〜10）
+// フェイルセーフ: 必須入力（波高・風速）が欠けとる場合は null（判定不能）を返す。
+// 欠損を「良好」な値で埋めて出港OKを出さないため（2026-07-19 評議会 裁可項目1）
 export function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
-  const waveScore   = scoreFromTable(waveHeight ?? 0, SCORE_THRESHOLDS.wave);
-  const windScore   = scoreFromTable(windSpeed ?? 0,  SCORE_THRESHOLDS.wind);
-  const weatherScore = scoreWeatherCode(weatherCode ?? 0);
-  const swellScore  = scoreSwellPeriod(swellPeriod ?? 8);
+  if (!Number.isFinite(waveHeight) || !Number.isFinite(windSpeed)) return null;
+  const waveScore   = scoreFromTable(waveHeight, SCORE_THRESHOLDS.wave);
+  const windScore   = scoreFromTable(windSpeed,  SCORE_THRESHOLDS.wind);
+  const weatherScore = Number.isFinite(weatherCode) ? scoreWeatherCode(weatherCode) : 5; // 不明時は中立
+  const swellScore  = Number.isFinite(swellPeriod) ? scoreSwellPeriod(swellPeriod) : 5;  // 不明時は中立
 
   const raw =
     waveScore   * SCORE_WEIGHTS.wave +
@@ -52,8 +55,34 @@ export function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
   return Math.round(Math.min(10, Math.max(1, adjusted)));
 }
 
+// 内訳チップ用: 各要素の個別スコア（欠損は null）
+export function calcSubScores({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
+  return {
+    wave:    Number.isFinite(waveHeight)  ? scoreFromTable(waveHeight, SCORE_THRESHOLDS.wave) : null,
+    wind:    Number.isFinite(windSpeed)   ? scoreFromTable(windSpeed,  SCORE_THRESHOLDS.wind) : null,
+    weather: Number.isFinite(weatherCode) ? scoreWeatherCode(weatherCode) : null,
+    swell:   Number.isFinite(swellPeriod) ? scoreSwellPeriod(swellPeriod) : null,
+  };
+}
+
+// 気象庁の警報・注意報によるスコア上限（発表なし・対象外なら10）
+// warnings は parseWarnings の戻り値（null 可）。
+// 特別警報は種類を問わず上限1。警報・注意報は海関連（SEA_WARNING_CODES）のみ対象
+export function warningScoreCap(warnings) {
+  let cap = 10;
+  for (const w of warnings?.items ?? []) {
+    if (w.level === 'emergency') {
+      cap = Math.min(cap, WARNING_SCORE_CAPS.emergency);
+    } else if (SEA_WARNING_CODES.has(w.code)) {
+      cap = Math.min(cap, WARNING_SCORE_CAPS[w.level] ?? 10);
+    }
+  }
+  return cap;
+}
+
 // スコアに対応するラベルと色を返す
 export function scoreLabel(score) {
+  if (score == null) return { text: '⚠️ 判定不能（データ取得失敗）', color: '#64748b' };
   if (score >= 9) return { text: '🌊 絶好のコンディション！',  color: '#0284c7' };
   if (score >= 7) return { text: '✅ 良好なコンディション',    color: '#22c55e' };
   if (score >= 5) return { text: '⚠️ まずまず、注意して',       color: '#84cc16' };
@@ -64,6 +93,7 @@ export function scoreLabel(score) {
 
 // 週間カレンダー用アイコン
 export function calendarIcon(score) {
+  if (score == null) return '❔';
   if (score >= 7) return '✅';
   if (score >= 4) return '⚠️';
   return '❌';
@@ -112,8 +142,13 @@ export function tidePeriods(peaks) {
 }
 
 // hourly.time 配列から現在時刻（JST）に対応するインデックスを返す
+// 見つからん場合は -1（データが古い・凍結しとる兆候）。
+// 以前は黙って先頭（別時刻の値）に倒しとったが、古いデータを「現在値」として
+// 表示せんよう呼び出し側で判定不能に落とす（2026-07-19 評議会）
 export function findCurrentHourIndex(times) {
-  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
-  const idx = times.findIndex(t => t.startsWith(nowStr));
-  return idx >= 0 ? idx : 0;
+  // 'sv'ロケールは「YYYY-MM-DD HH:MM」（スペース区切り）を返すが、Open-Meteoの時刻は
+  // 「YYYY-MM-DDTHH:MM」（T区切り）。Tに揃えんと一生マッチせん
+  // （旧実装はこの不一致を「見つからんかったら先頭」フォールバックが隠しとった）
+  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13).replace(' ', 'T');
+  return times.findIndex(t => t.startsWith(nowStr));
 }

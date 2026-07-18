@@ -1,4 +1,4 @@
-import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods, findCurrentHourIndex } from './score.js';
+import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods, findCurrentHourIndex, warningScoreCap } from './score.js';
 import { getWeatherIcon } from '../assets/weather-icons.js';
 import { CALENDAR_THRESHOLD, DIVE_POINTS } from './config.js';
 
@@ -20,7 +20,7 @@ function windProtectionNote(deg) {
 
 // ── ヒーロー・スコア ────────────────────────────────────────
 
-export function renderHero(epic, score, subScores) {
+export function renderHero(epic, score, subScores, { capped = false } = {}) {
   // 今日の日付
   const today = new Date().toLocaleDateString('ja-JP', {
     timeZone: 'Asia/Tokyo',
@@ -35,14 +35,29 @@ export function renderHero(epic, score, subScores) {
       `🛰 NASAが撮影した地球（${epic.date?.slice(0, 10) ?? ''}）`;
   }
 
-  if (score == null) return;
   const { text, color } = scoreLabel(score);
+  const banner  = document.getElementById('go-nogo-banner');
+  const capNote = document.getElementById('score-cap-note');
+
+  // フェイルセーフ表示: データが無い・古いときは緑を出さず「判定不能」を明示
+  // （2026-07-19 評議会 裁可項目1。以前は欠損を良好値で埋めて出港OKが出とった）
+  if (score == null) {
+    if (banner) {
+      banner.textContent = '⚠️ 判定不能 — データ取得失敗';
+      banner.className = 'banner-nodata';
+      document.body.classList.add('banner-visible');
+    }
+    document.getElementById('score-text').textContent =
+      'データを取得できません。気象庁の発表と現地の海況で判断してください。';
+    document.getElementById('score-container').style.borderColor = color;
+    if (capNote) capNote.textContent = '';
+    return;
+  }
 
   // 出港判断バナー
-  const banner = document.getElementById('go-nogo-banner');
   if (banner) {
     if (score >= 7) {
-      banner.textContent = '✅ 出港OK';
+      banner.textContent = '✅ 出港OK（要現地確認）';
       banner.className = 'banner-go';
     } else if (score >= 4) {
       banner.textContent = '⚠️ 要確認';
@@ -53,6 +68,11 @@ export function renderHero(epic, score, subScores) {
     }
     // バナー表示時にナビを押し下げる
     document.body.classList.add('banner-visible');
+  }
+
+  // 警報による上限適用中はその旨を明示
+  if (capNote) {
+    capNote.textContent = capped ? '⚠️ 警報・注意報の発表中のため、スコアに上限を適用しています' : '';
   }
 
   // SVG リングゲージ
@@ -71,12 +91,16 @@ export function renderHero(epic, score, subScores) {
   // カード枠の色
   document.getElementById('score-container').style.borderColor = color;
 
-  // 内訳チップ（スコアに応じて値の色を変える）
+  // 内訳チップ（スコアに応じて値の色を変える。欠損は -- のまま）
   if (subScores) {
     const scoreColor = s => s >= 8 ? '#22c55e' : s >= 6 ? '#84cc16' : s >= 4 ? '#f59e0b' : '#ef4444';
-    for (const [key, score] of [['wave', subScores.wave], ['wind', subScores.wind], ['weather', subScores.weather], ['swell', subScores.swell]]) {
+    for (const [key, val] of [['wave', subScores.wave], ['wind', subScores.wind], ['weather', subScores.weather], ['swell', subScores.swell]]) {
       const el = document.getElementById(`sub-${key}-val`);
-      if (el) { el.textContent = score; el.style.color = scoreColor(score); el.style.fontWeight = '800'; }
+      if (el) {
+        el.textContent = val ?? '--';
+        el.style.color = val != null ? scoreColor(val) : 'var(--muted)';
+        el.style.fontWeight = '800';
+      }
     }
     const tempEl = document.getElementById('sub-temp-val');
     if (tempEl) tempEl.textContent = subScores.temp != null ? `${subScores.temp}℃` : '--';
@@ -113,33 +137,34 @@ function animateCount(el, from, to, duration) {
 // ── 3地点カード ────────────────────────────────────────────
 
 export function renderConditionCards(weather, naha, route, kerama) {
-  const wCode   = weather?.current?.weathercode ?? 0;
-  const wIcon   = getWeatherIcon(wCode);
+  const wCode   = weather?.current?.weathercode;
+  const wIcon   = wCode != null ? getWeatherIcon(wCode) : null; // 欠損時に「快晴」と出さない
   const windDir = weather?.current?.wind_direction_10m;
   const compass = windDir != null ? degToCompass(windDir) : '';
 
+  // 現在時刻がデータに無い（idx=-1、古い・凍結）場合は値を出さず -- にする
   // 那覇港 (天気データ + 那覇海況)
-  const nahaIdx = naha ? findCurrentHourIndex(naha.hourly.time) : 0;
+  const nahaIdx = naha ? findCurrentHourIndex(naha.hourly.time) : -1;
   setCardData('naha', {
-    wave:    naha    ? `${naha.hourly.wave_height[nahaIdx].toFixed(1)} m` : '--',
-    wind:    weather ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
+    wave:    naha && nahaIdx >= 0 ? `${naha.hourly.wave_height[nahaIdx].toFixed(1)} m` : '--',
+    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
   // 航路中間
-  const routeIdx = route ? findCurrentHourIndex(route.hourly.time) : 0;
+  const routeIdx = route ? findCurrentHourIndex(route.hourly.time) : -1;
   setCardData('route', {
-    wave:    route   ? `${route.hourly.wave_height[routeIdx].toFixed(1)} m` : '--',
-    wind:    weather ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
+    wave:    route && routeIdx >= 0 ? `${route.hourly.wave_height[routeIdx].toFixed(1)} m` : '--',
+    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
   // 慶良間ダイブエリア
-  const keramaIdx = kerama ? findCurrentHourIndex(kerama.hourly.time) : 0;
-  const sst   = kerama?.hourly.sea_surface_temperature?.[keramaIdx];
-  const swell = kerama?.hourly.swell_wave_period?.[keramaIdx];
+  const keramaIdx = kerama ? findCurrentHourIndex(kerama.hourly.time) : -1;
+  const sst   = keramaIdx >= 0 ? kerama.hourly.sea_surface_temperature?.[keramaIdx] : null;
+  const swell = keramaIdx >= 0 ? kerama.hourly.swell_wave_period?.[keramaIdx] : null;
   setCardData('kerama', {
-    wave:  kerama    ? `${kerama.hourly.wave_height[keramaIdx].toFixed(1)} m` : '--',
+    wave:  kerama && keramaIdx >= 0 ? `${kerama.hourly.wave_height[keramaIdx].toFixed(1)} m` : '--',
     swell: swell != null ? `${swell.toFixed(0)} s` : '--',
     sst:   sst   != null ? `${sst.toFixed(1)} ℃` : '--',
   });
@@ -171,9 +196,19 @@ export function renderWarningChips(warnings) {
   const box = document.getElementById('warning-chips');
   if (!box) return;
 
-  const items = warnings?.items ?? [];
+  // 4状態を明示: 取得失敗・更新停止・発表なし・発表あり。
+  // 「何も出さない」は取得失敗と平穏の区別がつかんため廃止（2026-07-19 評議会）
+  if (!warnings) {
+    box.innerHTML = '<span class="warn-chip warn-unavailable">⚠️ 警報情報を取得できません — 気象庁で確認を</span>';
+    return;
+  }
+  if (warnings.stale) {
+    box.innerHTML = '<span class="warn-chip warn-unavailable">⚠️ 警報データが更新停止中 — 気象庁で確認を</span>';
+    return;
+  }
+  const items = warnings.items;
   if (!items.length) {
-    box.innerHTML = '';  // 発表なし or 取得失敗 → 何も出さない（画面クリーン）
+    box.innerHTML = '<span class="warn-chip warn-none">✅ 警報・注意報なし</span>';
     return;
   }
 
@@ -189,15 +224,20 @@ export function renderDivePoints(divePoints, weather, warnings) {
   const container = document.getElementById('dive-points');
   if (!container) return;
 
+  // 警報情報が取れとらん場合はポイント一覧の上に明示（無警報と区別する）
+  const warnNotice = (!warnings || warnings.stale)
+    ? '<div class="dp-warn-unavailable">⚠️ 警報情報を取得できません（気象庁で確認を）</div>'
+    : '';
+
   if (!divePoints || !Array.isArray(divePoints)) {
     container.classList.remove('skeleton-loading');
-    container.innerHTML = '<div class="dive-point-error">-- ポイント別データの取得に失敗しました --</div>';
+    container.innerHTML = warnNotice + '<div class="dive-point-error">-- ポイント別データの取得に失敗しました --</div>';
     return;
   }
 
-  // 風・天気は地域共通（那覇の現在値）、波・うねりはポイント別
-  const windSpeed   = (weather?.current?.wind_speed_10m ?? 10) / 3.6; // km/h → m/s
-  const weatherCode = weather?.current?.weathercode ?? 0;
+  // 風・天気は地域共通（那覇の現在値）、波・うねりはポイント別。欠損は埋めず判定不能に落とす
+  const windSpeed   = weather?.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined; // km/h → m/s
+  const weatherCode = weather?.current?.weathercode;
 
   const rows = DIVE_POINTS.map((point, i) => {
     // このポイントのエリアに出とる警報・注意報（深刻度順ソート済みなので先頭が最重要）
@@ -218,18 +258,15 @@ export function renderDivePoints(divePoints, weather, warnings) {
     }
 
     const hIdx    = findCurrentHourIndex(hourly.time ?? []);
-    const wave    = hourly.wave_height?.[hIdx];
-    const swellP  = hourly.swell_wave_period?.[hIdx];
-    const swellD  = hourly.swell_wave_direction?.[hIdx];
-    const curV    = hourly.ocean_current_velocity?.[hIdx];   // km/h
-    const curD    = hourly.ocean_current_direction?.[hIdx];
+    const wave    = hIdx >= 0 ? hourly.wave_height?.[hIdx] : undefined;
+    const swellP  = hIdx >= 0 ? hourly.swell_wave_period?.[hIdx] : undefined;
+    const swellD  = hIdx >= 0 ? hourly.swell_wave_direction?.[hIdx] : undefined;
+    const curV    = hIdx >= 0 ? hourly.ocean_current_velocity?.[hIdx] : undefined;   // km/h
+    const curD    = hIdx >= 0 ? hourly.ocean_current_direction?.[hIdx] : undefined;
 
-    const score = calcScore({
-      waveHeight:  wave ?? 1.0,
-      windSpeed,
-      weatherCode,
-      swellPeriod: swellP ?? 8,
-    });
+    const rawScore = calcScore({ waveHeight: wave, windSpeed, weatherCode, swellPeriod: swellP });
+    // このポイントのエリアに出とる警報で上限（総合スコアと同じルール）
+    const score = rawScore == null ? null : Math.min(rawScore, warningScoreCap({ items: pointWarns }));
     const { color } = scoreLabel(score);
 
     return `<div class="dive-point-row${rowClass}">
@@ -243,11 +280,11 @@ export function renderDivePoints(divePoints, weather, warnings) {
         <div class="dp-metric"><span class="dp-label">うねり</span><span class="dp-val">${swellP != null ? swellP.toFixed(0) + 's' : '--'}${swellD != null ? ' ' + degToCompass(swellD) : ''}</span></div>
         <div class="dp-metric"><span class="dp-label">潮流</span><span class="dp-val">${curV != null ? (curV / 3.6).toFixed(1) + 'm/s' : '--'}${curD != null ? ' ' + degToCompass(curD) : ''}</span></div>
       </div>
-      <span class="score-chip" style="background:${color}">${score}</span>
+      <span class="score-chip" style="background:${color}">${score ?? '--'}</span>
     </div>`;
   });
 
-  container.innerHTML = rows.join('');
+  container.innerHTML = warnNotice + rows.join('');
   container.classList.remove('skeleton-loading');
 }
 
@@ -264,16 +301,16 @@ export function renderCalendar(weather, kerama) {
   const marineHours = kerama.hourly.time;
 
   const cells = times.map((dateStr, i) => {
-    // その日の最大波高を marine hourly から取得
+    // その日の最大波高を marine hourly から取得（データが無い日は判定不能）
     const dayWaves = marineHours
       .map((t, idx) => t.startsWith(dateStr) ? waveHourly[idx] : null)
       .filter(v => v != null);
-    const maxWave = dayWaves.length ? Math.max(...dayWaves) : 1.0;
+    const maxWave = dayWaves.length ? Math.max(...dayWaves) : undefined;
 
     const score = calcScore({
       waveHeight:  maxWave,
-      windSpeed:   (windArr[i] ?? 10) / 3.6, // km/h → m/s
-      weatherCode: wCodeArr[i] ?? 0,
+      windSpeed:   windArr[i] != null ? windArr[i] / 3.6 : undefined, // km/h → m/s
+      weatherCode: wCodeArr[i],
       swellPeriod: 8,
     });
 
@@ -286,10 +323,10 @@ export function renderCalendar(weather, kerama) {
   });
 
   container.innerHTML = cells.map(c => `
-    <div class="cal-cell ${calClass(c.score)}">
+    <div class="cal-cell ${c.score == null ? 'cal-na' : calClass(c.score)}">
       <div class="cal-day">${c.dayLabel}</div>
       <div class="cal-num">${c.dayNum}</div>
-      <div class="cal-score">${c.score}</div>
+      <div class="cal-score">${c.score ?? '--'}</div>
       <div class="cal-icon">${c.icon}</div>
     </div>
   `).join('');
@@ -350,6 +387,10 @@ export function renderTideChart(kerama) {
   document.getElementById('tide-best').innerHTML =
     `🔼 上げ潮帯: <span>${risingStr}</span><br>🔽 下げ潮帯: <span>${fallingStr}</span>`;
 
+  // Chart.js（CDN）が読めんかった場合はグラフだけ諦める（満干潮の数値は上で表示済み。
+  // ここで例外を出すと後続の週間・時刻別の描画まで全部止まるため）
+  if (typeof Chart === 'undefined') return;
+
   // Chart.js グラフ
   const ctx = document.getElementById('tide-chart').getContext('2d');
   if (tideChart) tideChart.destroy();
@@ -407,9 +448,12 @@ export function renderTideChart(kerama) {
 
 // ── 時刻別予報テーブル ──────────────────────────────────────
 
-export function renderForecastTable(weather, kerama) {
+export function renderForecastTable(weather, kerama, warnings) {
   const tbody = document.getElementById('forecast-tbody');
   if (!weather?.hourly || !kerama?.hourly) return;
+
+  // 今日の発表中警報による上限（総合スコアと同じルール）
+  const cap = warningScoreCap(warnings);
 
   const wTimes  = weather.hourly.time;
   const wTemps  = weather.hourly.temperature_2m;
@@ -437,15 +481,16 @@ export function renderForecastTable(weather, kerama) {
     const hour = parseInt(t.slice(11, 13));
     if (hour < 7 || hour > 16) return acc;
 
-    // 対応する海況を取得
+    // 対応する海況を取得（欠損は埋めず判定不能に落とす）
     const mIdx  = mTimes.indexOf(t);
-    const wave  = mIdx >= 0 ? mWaves[mIdx] : null;
-    const score = calcScore({
-      waveHeight:  wave ?? 1.0,
-      windSpeed:   (wWinds[i] ?? 10) / 3.6,
-      weatherCode: wCodes[i] ?? 0,
+    const wave  = mIdx >= 0 ? mWaves[mIdx] : undefined;
+    const rawScore = calcScore({
+      waveHeight:  wave,
+      windSpeed:   wWinds[i] != null ? wWinds[i] / 3.6 : undefined,
+      weatherCode: wCodes[i],
       swellPeriod: 8,
     });
+    const score = rawScore == null ? null : Math.min(rawScore, cap);
     const icon = getWeatherIcon(wCodes[i] ?? 0);
     const { color } = scoreLabel(score);
 
@@ -461,7 +506,7 @@ export function renderForecastTable(weather, kerama) {
       <td>${r.temp?.toFixed(0) ?? '--'}℃</td>
       <td>${r.wind?.toFixed(0) ?? '--'} km/h<br><span class="wind-dir">${r.dir}</span></td>
       <td>${r.wave != null ? r.wave.toFixed(1) + ' m' : '--'}</td>
-      <td><span class="score-chip" style="background:${r.color}">${r.score}</span></td>
+      <td><span class="score-chip" style="background:${r.color}">${r.score ?? '--'}</span></td>
     </tr>
   `).join('');
 
@@ -470,11 +515,14 @@ export function renderForecastTable(weather, kerama) {
 
 // ── フッター ────────────────────────────────────────────────
 
-export function renderFooter() {
-  const now = new Date().toLocaleTimeString('ja-JP', {
-    timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit',
-  });
-  document.getElementById('last-updated').textContent = `最終更新: ${now}`;
+// フッターにはデータ側の時刻を出す。以前は描画した瞬間の時計を「最終更新」と
+// 表示しとったため、古いデータでも常に新鮮に見えとった（2026-07-19 評議会 裁可項目1）
+export function renderFooter(weather) {
+  const t = weather?.current?.time;
+  const str = t
+    ? new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) + ' JST'
+    : '--';
+  document.getElementById('last-updated').textContent = `データ時刻: ${str}（予報の基準時刻）`;
 }
 
 // ── データ時刻・ソース（Page 1） ────────────────────────────

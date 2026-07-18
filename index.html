@@ -69,6 +69,7 @@
             </svg>
           </div>
           <div id="score-text">データ読み込み中...</div>
+          <div id="score-cap-note"></div>
           <div id="sub-scores">
             <div class="sub-chip">
               <div class="sub-icon">🌊</div>
@@ -132,6 +133,7 @@
         <div id="wind-advisory" style="display:none"></div>
         <div id="epic-caption"></div>
         <div id="data-info"></div>
+        <div class="disclaimer">本アプリは気象・海況の参考情報です。出港・ダイビングの最終判断は、必ずガイド本人が気象庁の発表と現地の海況で行ってください。安全を保証するものではありません。</div>
         <div id="swipe-hint">← スワイプで海況へ →</div>
       </div>
 
@@ -182,6 +184,7 @@
 
         <h2 class="section-title">📅 週間コンディション <span class="section-note">（お客様連絡の参考に）</span></h2>
         <div id="calendar-grid" class="skeleton-loading"></div>
+        <div class="disclaimer-mini">※ 参考情報です。最終判断は気象庁の発表と現地の海況で。</div>
 
         <h2 class="section-title" style="margin-top:1.5rem">🕐 時刻別予報 <span id="forecast-date" class="section-note"></span></h2>
         <div class="table-wrap">
@@ -239,7 +242,7 @@
           <div class="formula-row"><span class="formula-factor">💨 風速</span><span class="formula-weight">35%</span></div>
           <div class="formula-row"><span class="formula-factor">☀️ 天気コード (JMA)</span><span class="formula-weight">15%</span></div>
           <div class="formula-row"><span class="formula-factor">〰️ うねり周期</span><span class="formula-weight">10%</span></div>
-          <div class="formula-note">⚓ 加重平均が波高スコアを上回る場合、超過分を50%減点します（出港の一番のボトルネックは波高のため）。波高2.5m超の日は最大2点です。</div>
+          <div class="formula-note">⚓ 加重平均が波高スコアを上回る場合、超過分を50%減点します（出港の一番のボトルネックは波高のため）。波高2.5m超の日は最大2点です。気象庁の警報・注意報（海関連）の発表中はスコアに上限が掛かります（特別警報=1・警報=3・注意報=6）。波・風のデータが取得できない場合、スコアは表示されません（判定不能）。</div>
         </div>
 
         <h2 class="section-title" style="margin-top:1.5rem">📏 判定基準値</h2>
@@ -332,7 +335,9 @@
         </div>
 
         <div style="margin-top:1.5rem; font-size:0.65rem; color:var(--muted); text-align:center; padding-bottom:1rem">
-          このアプリは優くんの安全なダイビングガイド業務をサポートするために作られました 🤿
+          このアプリは優くんの安全なダイビングガイド業務をサポートするために作られました 🤿<br><br>
+          本アプリが提供するのは参考情報であり、安全を保証するものではありません。<br>
+          出港・ダイビングの最終判断は、必ずガイド本人が気象庁の発表と現地の海況で行ってください。
         </div>
       </div>
     </div>

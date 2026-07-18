@@ -1,0 +1,5 @@
+# 本番サイトとして配信しないもの（リポジトリには残す）
+council
+tests
+notify
+.github

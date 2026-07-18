@@ -981,3 +981,53 @@ body {
 .dot.active {
   box-shadow: 0 0 8px rgba(0,180,216,0.7), 0 0 16px rgba(0,180,216,0.35);
 }
+
+/* ── 安全パッチ（2026-07-19 評議会）: 判定不能・警報状態・免責 ── */
+.banner-nodata { background: #475569; color: #fff; }
+
+.warn-chip.warn-unavailable {
+  background: rgba(100,116,139,0.25);
+  color: #cbd5e1;
+  border: 1px solid rgba(148,163,184,0.5);
+}
+.warn-chip.warn-none {
+  background: rgba(34,197,94,0.12);
+  color: #86efac;
+  border: 1px solid rgba(34,197,94,0.35);
+}
+
+#score-cap-note {
+  font-size: 0.72rem;
+  color: #fbbf24;
+  margin-top: 0.4rem;
+  text-align: center;
+}
+#score-cap-note:empty { display: none; }
+
+.dp-warn-unavailable {
+  font-size: 0.7rem;
+  color: #cbd5e1;
+  background: rgba(100,116,139,0.2);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.cal-cell.cal-na { border-color: #64748b; opacity: 0.75; }
+
+.disclaimer {
+  margin-top: 0.9rem;
+  font-size: 0.68rem;
+  line-height: 1.55;
+  color: var(--muted);
+  text-align: center;
+  border: 1px solid rgba(148,163,184,0.25);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+}
+.disclaimer-mini {
+  margin-top: 0.5rem;
+  font-size: 0.66rem;
+  color: var(--muted);
+  text-align: center;
+}

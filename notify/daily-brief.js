@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { DIVE_POINTS } from '../js/config.js';
-import { calcScore } from '../js/score.js';       // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
+import { calcScore, findCurrentHourIndex, warningScoreCap } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
@@ -8,6 +8,9 @@ const GMAIL_USER     = process.env.GMAIL_USER;
 const GMAIL_PASSWORD = process.env.GMAIL_APP_PASSWORD;
 const TO_EMAIL       = process.env.TEST_EMAIL || process.env.TO_EMAIL; // テスト時はTEST_EMAILを優先
 const APP_URL        = process.env.APP_URL ?? '';
+
+// フェッチのタイムアウト（1つのAPIの無応答でジョブ全体が固まるのを防ぐ）
+const FETCH_TIMEOUT_MS = 15 * 1000;
 
 // ── 場所の座標 ─────────────────────────────────────────────
 const LOCATIONS = {
@@ -28,7 +31,7 @@ async function fetchWeather() {
   p.set('timezone',   'Asia/Tokyo');
   p.set('forecast_days', '7');
   p.set('wind_speed_unit', 'kmh');
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`fetchWeather failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -42,7 +45,7 @@ async function fetchMarine(locKey) {
   p.set('hourly', 'wave_height,swell_wave_period,sea_level_height_msl,sea_surface_temperature');
   p.set('timezone', 'Asia/Tokyo');
   p.set('forecast_days', '7');
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`fetchMarine(${locKey}) failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -56,7 +59,7 @@ async function fetchDivePoints() {
   p.set('hourly', 'wave_height,swell_wave_period,ocean_current_velocity,ocean_current_direction');
   p.set('timezone', 'Asia/Tokyo');
   p.set('forecast_days', '2');
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`fetchDivePoints failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -67,7 +70,7 @@ async function fetchWarningsJma() {
   try {
     return await fetchWarningsViaXml();
   } catch {
-    const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json');
+    const res = await fetch('https://www.jma.go.jp/bosai/warning/data/warning/471000.json', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`fetchWarningsJma failed: ${res.status} ${res.statusText}`);
     return res.json();
   }
@@ -76,7 +79,10 @@ async function fetchWarningsJma() {
 // ── 警報・注意報欄を生成 ───────────────────────────────────
 function buildWarningsSection(warningsJson) {
   const parsed = parseWarnings(warningsJson);
-  if (!parsed) return '';  // 取得失敗時はセクションごと省略（メール自体は送る）
+  // 取得失敗も正直に伝える（セクション省略だと「警報なし」と区別がつかんため。2026-07-19 評議会）
+  if (!parsed) {
+    return `\n━━━ 発表中の警報・注意報 ━━━\n⚠️ 警報情報を取得できませんでした\n→ 最新は https://www.jma.go.jp/bosai/warning/ で確認してください\n`;
+  }
 
   // 鮮度ガード発動: 古いデータで誤誘導せず、正直に伝える
   if (parsed.stale) {
@@ -109,6 +115,7 @@ function degToCompass(deg) {
 
 // ── スコアラベル（メール専用の文言） ───────────────────────
 function scoreText(score) {
+  if (score == null) return '⚠️ 判定不能（データ取得失敗）— 気象庁の発表と現地の海況で判断してください';
   if (score >= 9) return '🌊 絶好のコンディション！';
   if (score >= 7) return '✅ 良好なコンディション';
   if (score >= 5) return '⚠️ まずまず、注意して';
@@ -158,35 +165,34 @@ function weeklyScores(weather, kerama) {
 }
 
 // ── ポイント別コンディション欄を生成 ───────────────────────
-function buildDivePointsSection(divePoints, weather) {
+function buildDivePointsSection(divePoints, weather, parsedWarnings) {
   if (!divePoints || !Array.isArray(divePoints)) return '';
 
-  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
-  const windSpeed   = (weather.current.wind_speed_10m ?? 10) / 3.6;
-  const weatherCode = weather.current.weathercode ?? 0;
+  // 欠損は埋めず判定不能に落とす（webと同じフェイルセーフ。2026-07-19 評議会）
+  const windSpeed   = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined;
+  const weatherCode = weather.current?.weathercode;
 
   const lines = DIVE_POINTS.map((point, i) => {
     const hourly = divePoints[i]?.hourly;
     if (!hourly) return `🤿 ${point.name}:  データ取得失敗`;
 
-    const idx    = (() => { const j = hourly.time.findIndex(t => t.startsWith(nowStr)); return j >= 0 ? j : 0; })();
-    const wave   = hourly.wave_height?.[idx];
-    const swellP = hourly.swell_wave_period?.[idx];
-    const curV   = hourly.ocean_current_velocity?.[idx];   // km/h
-    const curD   = hourly.ocean_current_direction?.[idx];
+    const idx    = findCurrentHourIndex(hourly.time ?? []);
+    const wave   = idx >= 0 ? hourly.wave_height?.[idx] : undefined;
+    const swellP = idx >= 0 ? hourly.swell_wave_period?.[idx] : undefined;
+    const curV   = idx >= 0 ? hourly.ocean_current_velocity?.[idx] : undefined;   // km/h
+    const curD   = idx >= 0 ? hourly.ocean_current_direction?.[idx] : undefined;
 
-    const score = calcScore({
-      waveHeight:  wave ?? 1.0,
-      windSpeed,
-      weatherCode,
-      swellPeriod: swellP ?? 8,
-    });
-    const icon = score >= 7 ? '✅' : score >= 4 ? '⚠️' : '❌';
+    const rawScore = calcScore({ waveHeight: wave, windSpeed, weatherCode, swellPeriod: swellP });
+    // このポイントのエリアに出とる警報で上限（webと同じルール）
+    const pointWarns = parsedWarnings?.items?.filter(w => w.areaKeys.includes(point.warnKey)) ?? [];
+    const score = rawScore == null ? null : Math.min(rawScore, warningScoreCap({ items: pointWarns }));
+    const icon = score == null ? '❔' : score >= 7 ? '✅' : score >= 4 ? '⚠️' : '❌';
 
     const waveStr  = wave   != null ? `波${wave.toFixed(1)}m` : '波--';
     const swellStr = swellP != null ? `うねり${swellP.toFixed(0)}s` : 'うねり--';
     const curStr   = curV   != null ? `潮流${(curV / 3.6).toFixed(1)}m/s${curD != null ? '(' + degToCompass(curD) + ')' : ''}` : '潮流--';
-    return `🤿 ${point.name}:  ${waveStr} ${swellStr} ${curStr}  ${score}/10 ${icon}`;
+    const scoreStr = score != null ? `${score}/10 ${icon}` : `判定不能 ${icon}`;
+    return `🤿 ${point.name}:  ${waveStr} ${swellStr} ${curStr}  ${scoreStr}`;
   });
 
   return `
@@ -196,18 +202,18 @@ ${lines.join('\n')}
 }
 
 // ── メール本文を生成 ───────────────────────────────────────
-function buildEmailBody({ score, weather, naha, route, kerama, divePoints, warningsJson, todayStr, hIdx = 0 }) {
-  const wCode    = weather.current.weathercode;
-  const windKmh  = weather.current.wind_speed_10m.toFixed(0);
-  const windDeg  = weather.current.wind_direction_10m;
+function buildEmailBody({ score, capped = false, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx = -1 }) {
+  const windKmh  = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m.toFixed(0) : '--';
+  const windDeg  = weather.current?.wind_direction_10m;
   const windDir  = windDeg != null ? degToCompass(windDeg) : '';
 
-  const nahaIdx    = (() => { const i = naha.hourly.time.findIndex(t => t.startsWith(new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13))); return i >= 0 ? i : 0; })();
-  const routeIdx   = (() => { const i = route.hourly.time.findIndex(t => t.startsWith(new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13))); return i >= 0 ? i : 0; })();
-  const nahaWave   = naha.hourly.wave_height?.[nahaIdx]?.toFixed(1) ?? '--';
-  const routeWave  = route.hourly.wave_height?.[routeIdx]?.toFixed(1) ?? '--';
-  const keramaWave = kerama.hourly.wave_height?.[hIdx]?.toFixed(1) ?? '--';
-  const sst        = kerama.hourly.sea_surface_temperature?.[hIdx]?.toFixed(1) ?? '--';
+  // 那覇・航路は取得失敗（null）でもメール全体は止めず -- で縮退する
+  const nahaIdx    = naha  ? findCurrentHourIndex(naha.hourly.time)  : -1;
+  const routeIdx   = route ? findCurrentHourIndex(route.hourly.time) : -1;
+  const nahaWave   = nahaIdx  >= 0 ? naha.hourly.wave_height?.[nahaIdx]?.toFixed(1)  ?? '--' : '--';
+  const routeWave  = routeIdx >= 0 ? route.hourly.wave_height?.[routeIdx]?.toFixed(1) ?? '--' : '--';
+  const keramaWave = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx]?.toFixed(1) ?? '--' : '--';
+  const sst        = hIdx >= 0 ? kerama.hourly.sea_surface_temperature?.[hIdx]?.toFixed(1) ?? '--' : '--';
 
   // 潮汐
   const peakTimes   = kerama.hourly.time;
@@ -259,14 +265,14 @@ function buildEmailBody({ score, weather, naha, route, kerama, divePoints, warni
   return `優くん、おはようございます！今日の慶良間コンディションです 🤿
 
 ━━━ 今日の出港判断 ━━━
-コンディションスコア: ${score}/10
-${scoreText(score)}
+コンディションスコア: ${score != null ? `${score}/10` : '判定不能'}
+${scoreText(score)}${capped ? '\n⚠️ 警報・注意報の発表中のため、スコアに上限を適用しています' : ''}
 ${buildWarningsSection(warningsJson)}
 ━━━ 3地点の状況 ━━━
 📍 那覇港沖:  波${nahaWave}m / 風${windKmh}km/h ${windDir}
 ⛵ 航路中間:  波${routeWave}m
 🤿 慶良間沖:  波${keramaWave}m / 海水温${sst}℃
-${buildDivePointsSection(divePoints, weather)}
+${buildDivePointsSection(divePoints, weather, parsedWarnings)}
 ━━━ 今日の潮汐（慶良間） ━━━
 🔼 満潮: ${highs.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
 🔽 干潮: ${lows.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
@@ -279,6 +285,9 @@ ${hourRows.join('\n')}
 ━━━ 週間コンディション ━━━
 ${weekly}
 ${urlLine}
+
+※ 本メールは気象・海況の参考情報です。出港・ダイビングの最終判断は、
+　必ず気象庁の発表と現地の海況で行ってください。安全を保証するものではありません。
 ---
 
 
@@ -291,7 +300,10 @@ Don't forget anything! Have a safe and fun dive! 🤿🌊
 
 // ── メイン処理 ─────────────────────────────────────────────
 async function main() {
-  if (!GMAIL_USER || !GMAIL_PASSWORD || !TO_EMAIL) {
+  // DRY_RUN は '1' のときだけ有効（'0' や 'false' が真になる文字列判定バグを修正）。
+  // DRY_RUN 時は資格情報なしで本文確認できる
+  const dryRun = process.env.DRY_RUN === '1';
+  if (!dryRun && (!GMAIL_USER || !GMAIL_PASSWORD || !TO_EMAIL)) {
     console.error('環境変数 GMAIL_USER / GMAIL_APP_PASSWORD / TO_EMAIL を設定してください');
     process.exit(1);
   }
@@ -315,23 +327,29 @@ async function main() {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   }).replace(/\//g, '-').slice(0, 10);
 
-  const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13);
-  const hIdx = (() => { const i = kerama.hourly.time.findIndex(t => t.startsWith(nowStr)); return i >= 0 ? i : 0; })();
-  const currentWave = kerama.hourly.wave_height?.[hIdx] ?? 1.0;
-  const currentWind = weather.current.wind_speed_10m / 3.6;
-  const score = calcScore({
+  // 現在時刻がデータに無い（＝古い・凍結）場合は -1 → 判定不能に落とす。
+  // 欠損を良好値（波1.0m等）で埋めるフォールバックは廃止（2026-07-19 評議会 裁可項目1）
+  const hIdx = findCurrentHourIndex(kerama.hourly.time ?? []);
+  const currentWave = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx] : undefined;
+  const currentWind = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined;
+  const rawScore = calcScore({
     waveHeight:  currentWave,
     windSpeed:   currentWind,
-    weatherCode: weather.current.weathercode ?? 0,
-    swellPeriod: kerama.hourly.swell_wave_period?.[hIdx] ?? 8,
+    weatherCode: weather.current?.weathercode,
+    swellPeriod: hIdx >= 0 ? kerama.hourly.swell_wave_period?.[hIdx] : undefined,
   });
+  // 気象庁の警報・注意報が発表中はスコアに上限（webと同じルール）
+  const parsedWarnings = parseWarnings(warningsJson);
+  const cap    = warningScoreCap(parsedWarnings);
+  const score  = rawScore == null ? null : Math.min(rawScore, cap);
+  const capped = rawScore != null && cap < rawScore;
 
-  const body = buildEmailBody({ score, weather, naha, route, kerama, divePoints, warningsJson, todayStr, hIdx });
+  const body = buildEmailBody({ score, capped, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx });
 
   // DRY_RUN=1 なら送信せずに本文を表示して終了（ローカルテスト用）
-  if (process.env.DRY_RUN) {
+  if (dryRun) {
     console.log(body);
-    console.log(`(DRY_RUN: メール送信スキップ / スコア: ${score}/10)`);
+    console.log(`(DRY_RUN: メール送信スキップ / スコア: ${score ?? '判定不能'})`);
     return;
   }
 
@@ -347,11 +365,11 @@ async function main() {
   await transporter.sendMail({
     from: `"慶良間ダイビング気象" <${GMAIL_USER}>`,
     to: TO_EMAIL,
-    subject: `🌊 今日の慶良間 コンディション ${score} out of 10 ／ ${dateLabel}`,
+    subject: `🌊 今日の慶良間 コンディション ${score != null ? `${score} out of 10` : '判定不能'} ／ ${dateLabel}`,
     text: body,
   });
 
-  console.log(`✅ メール送信完了 → ${TO_EMAIL} (スコア: ${score}/10)`);
+  console.log(`✅ メール送信完了 → ${TO_EMAIL} (スコア: ${score ?? '判定不能'})`);
 }
 
 main().catch(err => { console.error('エラー:', err); process.exit(1); });
