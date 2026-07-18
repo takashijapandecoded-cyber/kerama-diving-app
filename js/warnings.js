@@ -41,7 +41,14 @@ const ACTIVE_STATUS = new Set(['発表', '継続', '特別警報から警報', '
 // bosai JSON が2026/7に配信停止した際の乗り換え先。
 // Atomフィード → 最新の沖縄気象台 VPWW54（気象警報・注意報 H27形式）→ bosai JSON互換に変換
 
-const XML_FEED_URL = 'https://www.data.jma.go.jp/developer/xml/feed/extra.xml';
+const XML_FEED_URL      = 'https://www.data.jma.go.jp/developer/xml/feed/extra.xml';   // 直近約10時間
+const XML_FEED_LONG_URL = 'https://www.data.jma.go.jp/developer/xml/feed/extra_l.xml'; // 直近約1週間（約3MB）
+
+// 平穏な日は短期フィードに警報エントリが無い（発表が無い＝平穏）ため、
+// 一度見つけたXMLのURLを覚えておき、次回以降は3MBの長期フィードを再取得せずに済ませる
+const MEMO_KEY = 'diving_warnings_xml_url';
+function memoGet() { try { return globalThis.sessionStorage?.getItem(MEMO_KEY) ?? null; } catch { return null; } }
+function memoSet(url) { try { globalThis.sessionStorage?.setItem(MEMO_KEY, url); } catch { /* 無視 */ } }
 
 // フィードから最新の沖縄警報XML（VPWW54_471000）のURLを返す（フィードは新しい順）
 export function pickLatestWarningXmlUrl(feedText) {
@@ -72,21 +79,42 @@ export function xmlToWarningJson(xmlText) {
     areas.push({ code: areaCode, warnings });
   }
 
-  return { reportDatetime: dtMatch[1], areaTypes: [{ areas }] };
+  // via: 'xml' … フィード経由の取得であることの印。
+  // フィードでは「新しい発表が無い＝前回発表が今も有効」なので、鮮度ガードを適用しない
+  return { reportDatetime: dtMatch[1], areaTypes: [{ areas }], via: 'xml' };
 }
 
-// フィード→XML→変換 の一連の取得（ブラウザ・Node共用）
-export async function fetchWarningsViaXml() {
-  const feedRes = await fetch(XML_FEED_URL);
-  if (!feedRes.ok) throw new Error('気象庁XMLフィード取得エラー');
-  const url = pickLatestWarningXmlUrl(await feedRes.text());
-  if (!url) throw new Error('沖縄の警報XMLがフィードに見つかりません');
-
+async function fetchAndConvert(url) {
   const xmlRes = await fetch(url);
   if (!xmlRes.ok) throw new Error('気象庁警報XML取得エラー');
   const json = xmlToWarningJson(await xmlRes.text());
   if (!json) throw new Error('気象庁警報XMLの解析に失敗');
   return json;
+}
+
+// フィード→XML→変換 の一連の取得（ブラウザ・Node共用）
+// 短期フィード → (無ければ) 記憶済みURL → (無ければ) 長期フィード の順で探す
+export async function fetchWarningsViaXml() {
+  const feedRes = await fetch(XML_FEED_URL);
+  if (!feedRes.ok) throw new Error('気象庁XMLフィード取得エラー');
+  const url = pickLatestWarningXmlUrl(await feedRes.text());
+  if (url) {
+    memoSet(url);
+    return fetchAndConvert(url);
+  }
+
+  // 短期フィードに無い＝直近10時間発表なし（平穏）。記憶済みURLがあればそれが最新
+  const memoUrl = memoGet();
+  if (memoUrl) {
+    try { return await fetchAndConvert(memoUrl); } catch { /* 古すぎて消えた場合は長期へ */ }
+  }
+
+  const longRes = await fetch(XML_FEED_LONG_URL);
+  if (!longRes.ok) throw new Error('気象庁XML長期フィード取得エラー');
+  const longUrl = pickLatestWarningXmlUrl(await longRes.text());
+  if (!longUrl) throw new Error('沖縄の警報XMLがフィードに見つかりません');
+  memoSet(longUrl);
+  return fetchAndConvert(longUrl);
 }
 
 // 鮮度ガード: 発表時刻がこれより古いデータは「配信停止中」とみなして表示しない
@@ -101,9 +129,13 @@ export function parseWarnings(json, now = Date.now()) {
   if (!json?.areaTypes) return null;
 
   const reportDatetime = json.reportDatetime ?? null;
-  const reportTime = reportDatetime ? new Date(reportDatetime).getTime() : NaN;
-  if (!Number.isFinite(reportTime) || now - reportTime > STALE_MS) {
-    return { items: [], reportDatetime, stale: true };
+  // 鮮度ガードは bosai JSON（配信停止歴あり）にのみ適用。
+  // XMLフィード経由は「新しい発表が無い＝前回発表が現在も有効」という公式仕様のため古くても信頼できる
+  if (json.via !== 'xml') {
+    const reportTime = reportDatetime ? new Date(reportDatetime).getTime() : NaN;
+    if (!Number.isFinite(reportTime) || now - reportTime > STALE_MS) {
+      return { items: [], reportDatetime, stale: true };
+    }
   }
 
   // 自治体コード → エリアキーの逆引き表
