@@ -138,9 +138,17 @@ export async function fetchWarningsViaXml() {
   const longRes = await fetch(XML_FEED_LONG_URL, { signal: timeoutSignal() });
   if (!longRes.ok) throw new Error('気象庁XML長期フィード取得エラー');
   const longUrl = pickLatestWarningXmlUrl(await longRes.text());
-  if (!longUrl) throw new Error('沖縄の警報XMLがフィードに見つかりません');
-  memoSet(longUrl);
-  return fetchAndConvert(longUrl);
+  if (longUrl) {
+    memoSet(longUrl);
+    return fetchAndConvert(longUrl);
+  }
+
+  // 短期フィードは生きとる（feedIsAlive済み）のに、短期にも長期（直近約1週間）にも
+  // 沖縄のVPWW54が無い ＝ 1週間以上、沖縄で警報・注意報の発表・切替・解除が一度も無い ＝ 平穏。
+  // ここで throw すると呼び出し側が凍結した bosai(予備) に落ち、古いデータ（例: 5/28）を
+  // 「更新停止中」として見せてしまう。生きたフィードに基づく「発表なし」を正常結果として返す。
+  // （沖縄の最後の発表が1週間ウィンドウから抜けるたびに誤表示になっとった時限爆弾の解消）
+  return { reportDatetime: null, areaTypes: [{ areas: [] }], via: 'xml' };
 }
 
 // 鮮度ガード: 発表時刻がこれより古いデータは「配信停止中」とみなして表示しない
