@@ -76,17 +76,22 @@ body {
   transform: translateX(-50%);
   z-index: 100;
   display: flex;
-  gap: 6px;
+  gap: 12px;
   transition: top 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dot {
+  box-sizing: content-box; /* border-boxだと6px<padding8pxで中身が0になり円が消えるため個別指定 */
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: rgba(255,255,255,0.3);
   cursor: pointer;
   transition: background 0.3s, transform 0.3s;
+  /* 見た目のサイズは変えず、タップ判定だけ広げる（濡れ手・船上対策） */
+  padding: 4px;
+  margin: -4px;
+  background-clip: content-box;
 }
 .dot.active {
   background: var(--accent);
@@ -112,6 +117,9 @@ body {
   transition: color 0.3s;
   letter-spacing: 0.05em;
   white-space: nowrap;
+  /* 見た目の位置は変えず、タップ判定だけ広げる（濡れ手・船上対策） */
+  padding: 6px 8px;
+  margin: -6px -8px;
 }
 .plabel.active { color: rgba(255,255,255,0.9); }
 
@@ -1017,9 +1025,9 @@ body {
 
 .disclaimer {
   margin-top: 0.9rem;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   line-height: 1.55;
-  color: var(--muted);
+  color: var(--text);
   text-align: center;
   border: 1px solid rgba(148,163,184,0.25);
   border-radius: 8px;
@@ -1027,7 +1035,7 @@ body {
 }
 .disclaimer-mini {
   margin-top: 0.5rem;
-  font-size: 0.66rem;
-  color: var(--muted);
+  font-size: 0.72rem;
+  color: var(--text);
   text-align: center;
 }
