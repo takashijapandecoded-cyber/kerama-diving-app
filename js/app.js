@@ -14,11 +14,16 @@ import {
 } from './ui.js';
 
 // データの「署名」を作る（APIの更新タイムスタンプで判定）
-function dataSignature(weather, kerama) {
+function dataSignature(weather, kerama, warningsJson) {
   const t1 = weather?.current?.time ?? '';
   const t2 = kerama?.hourly?.time?.[0] ?? '';
+  // 警報の発表時刻も署名に含める（2026-07-21）:
+  // 天気・海況が変わらんまま警報だけ新しく発表された場合、以前は署名が変わらず
+  // 「🔄予報更新」ボタンが出んかった（開きっぱなしのタブで最大1時間、警報の反映が遅れる）。
+  // 安全に直結するデータやけん取りこぼさない
+  const t3 = warningsJson?.reportDatetime ?? '';
   // タイムスタンプが変わった＝新しいデータが来た
-  return `${t1}_${t2}`;
+  return `${t1}_${t2}_${t3}`;
 }
 
 function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson) {
@@ -66,7 +71,7 @@ async function main() {
   const data = new URLSearchParams(location.search).get('debug') === 'nodata'
     ? { epic: null, weather: null, naha: null, route: null, kerama: null, divePoints: null, warnings: null }
     : await fetchAll();
-  let currentSig = dataSignature(data.weather, data.kerama);
+  let currentSig = dataSignature(data.weather, data.kerama, data.warnings);
   renderAll(data.epic, data.weather, data.naha, data.route, data.kerama, data.divePoints, data.warnings);
 
   const updateBtn = document.getElementById('update-btn');
@@ -77,7 +82,7 @@ async function main() {
   async function checkForUpdate() {
     try {
       const fresh    = await fetchAll();
-      const freshSig = dataSignature(fresh.weather, fresh.kerama);
+      const freshSig = dataSignature(fresh.weather, fresh.kerama, fresh.warnings);
       if (freshSig !== currentSig) {
         latestData = fresh;
         updateBtn.classList.remove('hidden'); // ぴこぴこ出現！
@@ -100,7 +105,7 @@ async function main() {
   });
 
   updateBtn.addEventListener('click', () => {
-    currentSig = dataSignature(latestData.weather, latestData.kerama);
+    currentSig = dataSignature(latestData.weather, latestData.kerama, latestData.warnings);
     renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama, latestData.divePoints, latestData.warnings);
     updateBtn.classList.add('hidden');
   });
