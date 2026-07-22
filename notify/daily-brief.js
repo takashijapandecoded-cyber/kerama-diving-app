@@ -1,4 +1,7 @@
 import nodemailer from 'nodemailer';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DIVE_POINTS } from '../js/config.js';
 import { calcScore, findCurrentHourIndex, warningScoreCap } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
@@ -8,6 +11,10 @@ const GMAIL_USER     = process.env.GMAIL_USER;
 const GMAIL_PASSWORD = process.env.GMAIL_APP_PASSWORD;
 const TO_EMAIL       = process.env.TEST_EMAIL || process.env.TO_EMAIL; // テスト時はTEST_EMAILを優先
 const APP_URL        = process.env.APP_URL ?? '';
+
+// アプリスコア履歴の記録先（このリポジトリ内のCSV。ワークフローが自動コミットする）
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SCORE_HISTORY_CSV = path.join(__dirname, 'score-history.csv');
 
 // フェッチのタイムアウト（1つのAPIの無応答でジョブ全体が固まるのを防ぐ）
 const FETCH_TIMEOUT_MS = 15 * 1000;
@@ -162,6 +169,57 @@ function weeklyScores(weather, kerama) {
     const dayLabel = date.toLocaleDateString('ja-JP', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'Asia/Tokyo' });
     return { dayLabel, score, icon };
   });
+}
+
+// 営業時間帯（7〜16時）でスコアが最も低くなる時刻を探す。
+// 朝5時スナップショットと分けて記録することで、キャリブレーションのズレが
+// 「式の見立てが違う」のか「朝と日中で海況が変わっただけ」なのかを区別できるようにする
+function worstScore716(weather, kerama, todayStr) {
+  const wTimes = weather.hourly.time;
+  let worst = null;
+  for (let i = 0; i < wTimes.length; i++) {
+    const t = wTimes[i];
+    if (!t.startsWith(todayStr)) continue;
+    const hr = parseInt(t.slice(11, 13));
+    if (hr < 7 || hr > 16) continue;
+    const mIdx = kerama.hourly.time.indexOf(t);
+    if (mIdx < 0) continue;
+    const s = calcScore({
+      waveHeight:  kerama.hourly.wave_height?.[mIdx],
+      windSpeed:   weather.hourly.wind_speed_10m?.[i] != null ? weather.hourly.wind_speed_10m[i] / 3.6 : undefined,
+      weatherCode: weather.hourly.weathercode?.[i],
+      swellPeriod: kerama.hourly.swell_wave_period?.[mIdx],
+    });
+    if (s == null) continue;
+    if (worst == null || s < worst.score) worst = { score: s, time: t.slice(11, 16) };
+  }
+  return worst;
+}
+
+// アプリスコア履歴をCSVに追記（優くんのキャリブレーション記録と突き合わせるため）。
+// このリポジトリ内のファイルに直接書き込み、ワークフロー側でコミット・プッシュする
+// （Google側の設定が一切要らんよう、あえてこの方式にしとる）。
+// 副次機能であり安全機能ではないため、失敗してもメール送信は止めない
+function appendScoreHistory({ todayStr, score, capped, cap, worst, parsedWarnings }) {
+  try {
+    const cappedWorst = worst ? Math.min(worst.score, cap) : '';
+    const warningNames = (parsedWarnings?.items ?? []).map(w => w.name).join('/');
+    const csvEscape = v => `"${String(v).replace(/"/g, '""')}"`;
+    const row = [todayStr, score ?? '', capped ? 'yes' : '', cappedWorst, worst?.time ?? '', warningNames]
+      .map(csvEscape).join(',') + '\n';
+
+    if (!fs.existsSync(SCORE_HISTORY_CSV)) {
+      const header = ['date', 'score5am', 'capped', 'scoreWorst716', 'worstTime', 'warnings'].join(',') + '\n';
+      fs.writeFileSync(SCORE_HISTORY_CSV, header + row);
+      return;
+    }
+    // 同じ日付の行がすでにあれば追記しない（同日の再実行対策）
+    const existing = fs.readFileSync(SCORE_HISTORY_CSV, 'utf8');
+    if (existing.includes(`\n"${todayStr}"`)) return;
+    fs.appendFileSync(SCORE_HISTORY_CSV, row);
+  } catch (err) {
+    console.error('⚠️ スコア履歴のCSV記録に失敗（メール送信には影響なし）:', err.message);
+  }
 }
 
 // ── ポイント別コンディション欄を生成 ───────────────────────
@@ -346,12 +404,15 @@ async function main() {
 
   const body = buildEmailBody({ score, capped, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx });
 
-  // DRY_RUN=1 なら送信せずに本文を表示して終了（ローカルテスト用）
+  // DRY_RUN=1 なら送信せずに本文を表示して終了（ローカルテスト用。シート記録も行わない）
   if (dryRun) {
     console.log(body);
     console.log(`(DRY_RUN: メール送信スキップ / スコア: ${score ?? '判定不能'})`);
     return;
   }
+
+  const worst = worstScore716(weather, kerama, todayStr);
+  appendScoreHistory({ todayStr, score, capped, cap, worst, parsedWarnings });
 
   const transporter = nodemailer.createTransport({
     service: 'gmail',

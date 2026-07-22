@@ -11,7 +11,7 @@ on:
         default: ''
 
 permissions:
-  contents: read
+  contents: write  # スコア履歴CSVを自動コミットするため（読み取りのみのreadから変更）
 
 jobs:
   send-morning-brief:
@@ -38,3 +38,16 @@ jobs:
           TEST_EMAIL:         ${{ github.event.inputs.test_email }}
           APP_URL:            ${{ secrets.APP_URL }}
         run: node daily-brief.js
+
+      - name: スコア履歴CSVをコミット
+        working-directory: notify
+        run: |
+          if [ -n "$(git status --porcelain score-history.csv)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add score-history.csv
+            git commit -m "記録: $(date -u +%Y-%m-%d) のスコア履歴"
+            git push || echo "⚠️ push失敗（他の変更と衝突した可能性。次回に持ち越し）"
+          else
+            echo "スコア履歴に変更なし（DRY_RUN、または本日分は記録済み）"
+          fi
