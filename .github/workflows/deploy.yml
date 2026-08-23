@@ -17,6 +17,15 @@ jobs:
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
 
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 安全ロジックが壊れたまま本番へ出さんための門番
+      - name: 安全ロジックの回帰テスト
+        run: node --test tests/safety.test.mjs
+
       - name: Vercel CLI インストール
         # @latest だと未検証・侵害版のCLIをsecrets付きで即実行してしまうためバージョン固定
         run: npm install -g vercel@56.3.2

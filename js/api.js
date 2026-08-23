@@ -79,7 +79,10 @@ export async function fetchWeather() {
   url.searchParams.set('daily', 'weathercode,temperature_2m_max,wind_speed_10m_max');
   url.searchParams.set('timezone', 'Asia/Tokyo');
   url.searchParams.set('forecast_days', '7');
-  url.searchParams.set('wind_speed_unit', 'kmh');
+  // 風速は m/s で受け取る（気象庁・船・ダイビングの標準単位）。
+  // 以前は kmh で受けて各所で /3.6 しとったが、変換の書き漏らしが 3.6倍のスコア誤差に
+  // 直結するため、入口で単位を固定して変換そのものをなくした
+  url.searchParams.set('wind_speed_unit', 'ms');
 
   const res = await fetchOk(url, { label: 'Open-Meteo 天気' });
   const data = await res.json();

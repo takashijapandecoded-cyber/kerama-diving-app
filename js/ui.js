@@ -147,7 +147,7 @@ export function renderConditionCards(weather, naha, route, kerama) {
   const nahaIdx = naha ? findCurrentHourIndex(naha.hourly.time) : -1;
   setCardData('naha', {
     wave:    naha && nahaIdx >= 0 ? `${naha.hourly.wave_height[nahaIdx].toFixed(1)} m` : '--',
-    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
+    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(1)} m/s ${compass}`.trim() : '--',
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
@@ -155,7 +155,7 @@ export function renderConditionCards(weather, naha, route, kerama) {
   const routeIdx = route ? findCurrentHourIndex(route.hourly.time) : -1;
   setCardData('route', {
     wave:    route && routeIdx >= 0 ? `${route.hourly.wave_height[routeIdx].toFixed(1)} m` : '--',
-    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(0)} km/h ${compass}`.trim() : '--',
+    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(1)} m/s ${compass}`.trim() : '--',
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
@@ -236,7 +236,7 @@ export function renderDivePoints(divePoints, weather, warnings) {
   }
 
   // 風・天気は地域共通（那覇の現在値）、波・うねりはポイント別。欠損は埋めず判定不能に落とす
-  const windSpeed   = weather?.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined; // km/h → m/s
+  const windSpeed   = weather?.current?.wind_speed_10m;  // m/s（APIで指定済み）
   const weatherCode = weather?.current?.weathercode;
 
   const rows = DIVE_POINTS.map((point, i) => {
@@ -261,6 +261,7 @@ export function renderDivePoints(divePoints, weather, warnings) {
     const wave    = hIdx >= 0 ? hourly.wave_height?.[hIdx] : undefined;
     const swellP  = hIdx >= 0 ? hourly.swell_wave_period?.[hIdx] : undefined;
     const swellD  = hIdx >= 0 ? hourly.swell_wave_direction?.[hIdx] : undefined;
+    // Marine APIは current_velocity_unit を無視して常に km/h を返すため、ここだけ変換が要る
     const curV    = hIdx >= 0 ? hourly.ocean_current_velocity?.[hIdx] : undefined;   // km/h
     const curD    = hIdx >= 0 ? hourly.ocean_current_direction?.[hIdx] : undefined;
 
@@ -309,7 +310,7 @@ export function renderCalendar(weather, kerama) {
 
     const score = calcScore({
       waveHeight:  maxWave,
-      windSpeed:   windArr[i] != null ? windArr[i] / 3.6 : undefined, // km/h → m/s
+      windSpeed:   windArr[i],  // m/s（APIで指定済み）
       weatherCode: wCodeArr[i],
       swellPeriod: 8,
     });
@@ -486,7 +487,7 @@ export function renderForecastTable(weather, kerama, warnings) {
     const wave  = mIdx >= 0 ? mWaves[mIdx] : undefined;
     const rawScore = calcScore({
       waveHeight:  wave,
-      windSpeed:   wWinds[i] != null ? wWinds[i] / 3.6 : undefined,
+      windSpeed:   wWinds[i],  // m/s（APIで指定済み）
       weatherCode: wCodes[i],
       swellPeriod: 8,
     });
@@ -504,7 +505,7 @@ export function renderForecastTable(weather, kerama, warnings) {
       <td class="td-time">${r.time}</td>
       <td>${r.icon?.emoji ?? '--'}</td>
       <td>${r.temp?.toFixed(0) ?? '--'}℃</td>
-      <td>${r.wind?.toFixed(0) ?? '--'} km/h<br><span class="wind-dir">${r.dir}</span></td>
+      <td>${r.wind?.toFixed(1) ?? '--'} m/s<br><span class="wind-dir">${r.dir}</span></td>
       <td>${r.wave != null ? r.wave.toFixed(1) + ' m' : '--'}</td>
       <td><span class="score-chip" style="background:${r.color}">${r.score ?? '--'}</span></td>
     </tr>

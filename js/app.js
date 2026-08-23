@@ -1,6 +1,7 @@
 import { fetchAll } from './api.js';
 import { calcScore, calcSubScores, warningScoreCap, findCurrentHourIndex } from './score.js';
 import { parseWarnings } from './warnings.js';
+import { showNoticeIfDue } from './notice.js';
 import {
   renderHero,
   renderConditionCards,
@@ -35,7 +36,7 @@ function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson)
   const hIdx         = findCurrentHourIndex(kerama?.hourly?.time ?? []);
   const currentWave  = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx] : undefined;
   const currentSwell = hIdx >= 0 ? kerama.hourly.swell_wave_period?.[hIdx] : undefined;
-  const currentWind  = weather?.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined;
+  const currentWind  = weather?.current?.wind_speed_10m;  // m/s（APIで指定済み）
   const currentCode  = weather?.current?.weathercode;
 
   const inputs    = { waveHeight: currentWave, windSpeed: currentWind, weatherCode: currentCode, swellPeriod: currentSwell };
@@ -110,6 +111,10 @@ async function main() {
     updateBtn.classList.add('hidden');
   });
 }
+
+// 一度きりのお知らせ（表示期間・既読判定は notice.js 側で完結）。
+// データ取得の成否に関係なく出したいので main() とは切り離して呼ぶ
+showNoticeIfDue();
 
 main().catch(err => {
   console.error('データ取得エラー:', err);

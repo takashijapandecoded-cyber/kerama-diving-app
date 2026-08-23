@@ -1039,3 +1039,112 @@ body {
   color: var(--text);
   text-align: center;
 }
+
+/* ── お知らせポップアップ（js/notice.js とセット・役目が終わったら両方消す）───── */
+#notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;              /* バナー(200)・更新ボタン(200)より前面 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(5, 12, 24, 0.72);
+  backdrop-filter: blur(3px);
+  animation: notice-fade-in 0.22s ease both;
+}
+#notice-overlay.notice-closing { animation: notice-fade-in 0.2s ease both reverse; }
+
+@keyframes notice-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+#notice-card {
+  position: relative;
+  width: 100%;
+  max-width: 22rem;
+  padding: 1.5rem 1.25rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  color: var(--text);
+  animation: notice-pop-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
+}
+
+@keyframes notice-pop-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ✕ は見た目を小さく保ちつつ、タップ判定は44px確保する */
+#notice-close {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+#notice-close:hover { color: var(--text); background: rgba(148, 163, 184, 0.12); }
+
+#notice-title {
+  margin: 0 2.25rem 0.75rem 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.4;
+}
+
+#notice-card p {
+  margin: 0 0 0.85rem;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--text);
+}
+#notice-card p.notice-sub { color: var(--muted); font-size: 0.82rem; margin-bottom: 1.1rem; }
+#notice-card b { color: var(--text); font-weight: 700; }
+
+/* 換算例: 旧表記 → 新表記 */
+.notice-conv {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.5rem;
+  border-radius: 10px;
+  background: var(--surface2);
+}
+.notice-conv > div { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; }
+.notice-conv span  { font-size: 0.7rem; color: var(--muted); }
+.notice-conv b     { font-size: 1rem; font-weight: 800; }
+.notice-conv .notice-arrow { color: var(--accent); font-size: 1.05rem; font-weight: 800; }
+
+#notice-ok {
+  width: 100%;
+  min-height: 44px;          /* タップ標的の下限 */
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #00b4d8, #0077b6);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+#notice-ok:active { filter: brightness(0.92); }
+
+/* 端末の「視差効果を減らす」設定を尊重する */
+@media (prefers-reduced-motion: reduce) {
+  #notice-overlay, #notice-card { animation: none; }
+}

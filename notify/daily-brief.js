@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DIVE_POINTS } from '../js/config.js';
-import { calcScore, findCurrentHourIndex, warningScoreCap } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
+import { calcScore, findCurrentHourIndex, warningScoreCap, calendarIcon } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
@@ -37,7 +37,8 @@ async function fetchWeather() {
   p.set('daily',      'weathercode,wind_speed_10m_max');
   p.set('timezone',   'Asia/Tokyo');
   p.set('forecast_days', '7');
-  p.set('wind_speed_unit', 'kmh');
+  // 風速は m/s（気象庁・船・ダイビングの標準単位）。api.js と揃えとる
+  p.set('wind_speed_unit', 'ms');
   const res = await fetch(url.toString(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`fetchWeather failed: ${res.status} ${res.statusText}`);
   return res.json();
@@ -145,6 +146,17 @@ function findPeaks(times, heights) {
 
 function fmtTime(isoStr) { return isoStr.slice(11, 16); }
 
+// ── 一度きりのお知らせ（アプリ側の js/notice.js とセット）──────────
+// 朝5時のメールの方がアプリより先に優くんの目に入るため、同じ日だけ本文にも1行入れる。
+// この日を過ぎたら自動で消える。役目が終わったらこのブロックごと消してよい
+const NOTICE_DATE = '2026-08-24';   // js/notice.js の DISPLAY_FROM / DISPLAY_TO と揃えること
+function unitNoticeFor(todayStr) {
+  if (todayStr !== NOTICE_DATE) return '';
+  return '\n💨 お知らせ: 今日から風速の表示を km/h → m/s に変更しました' +
+         '（気象庁・船舶の標準単位。例: 18km/h ＝ 5.0m/s）。' +
+         '\n　 数値の見た目が変わるだけで、スコアの計算方法は変わっていません。\n';
+}
+
 // ── 週間スコア生成 ─────────────────────────────────────────
 function weeklyScores(weather, kerama) {
   const days     = weather.daily.time;
@@ -157,14 +169,16 @@ function weeklyScores(weather, kerama) {
     const dayWaves = mTimes
       .map((t, idx) => t.startsWith(dateStr) ? mWaves[idx] : null)
       .filter(v => v != null);
-    const maxWave = dayWaves.length ? Math.max(...dayWaves) : 1.0;
+    // 欠損を「良好」な値（波1.0m・風10・快晴）で埋めると、データが無い日ほど
+    // 高得点に見えるという逆転が起きる。判定不能のまま返す（評議会 裁可項目1・renderCalendar と同じ）
+    const maxWave = dayWaves.length ? Math.max(...dayWaves) : undefined;
     const score = calcScore({
       waveHeight: maxWave,
-      windSpeed:  (windMax[i] ?? 10) / 3.6,
-      weatherCode: wCode[i] ?? 0,
+      windSpeed:  windMax[i],   // m/s（APIで指定済み）
+      weatherCode: wCode[i],
       swellPeriod: 8,
     });
-    const icon = score >= 7 ? '✅' : score >= 4 ? '⚠️' : '❌';
+    const icon = calendarIcon(score);
     const date = new Date(dateStr + 'T00:00:00+09:00');
     const dayLabel = date.toLocaleDateString('ja-JP', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'Asia/Tokyo' });
     return { dayLabel, score, icon };
@@ -186,7 +200,7 @@ function worstScore716(weather, kerama, todayStr) {
     if (mIdx < 0) continue;
     const s = calcScore({
       waveHeight:  kerama.hourly.wave_height?.[mIdx],
-      windSpeed:   weather.hourly.wind_speed_10m?.[i] != null ? weather.hourly.wind_speed_10m[i] / 3.6 : undefined,
+      windSpeed:   weather.hourly.wind_speed_10m?.[i],   // m/s（APIで指定済み）
       weatherCode: weather.hourly.weathercode?.[i],
       swellPeriod: kerama.hourly.swell_wave_period?.[mIdx],
     });
@@ -227,7 +241,7 @@ function buildDivePointsSection(divePoints, weather, parsedWarnings) {
   if (!divePoints || !Array.isArray(divePoints)) return '';
 
   // 欠損は埋めず判定不能に落とす（webと同じフェイルセーフ。2026-07-19 評議会）
-  const windSpeed   = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined;
+  const windSpeed   = weather.current?.wind_speed_10m;   // m/s（APIで指定済み）
   const weatherCode = weather.current?.weathercode;
 
   const lines = DIVE_POINTS.map((point, i) => {
@@ -237,6 +251,7 @@ function buildDivePointsSection(divePoints, weather, parsedWarnings) {
     const idx    = findCurrentHourIndex(hourly.time ?? []);
     const wave   = idx >= 0 ? hourly.wave_height?.[idx] : undefined;
     const swellP = idx >= 0 ? hourly.swell_wave_period?.[idx] : undefined;
+    // Marine APIは current_velocity_unit を無視して常に km/h を返すため、ここだけ変換が要る
     const curV   = idx >= 0 ? hourly.ocean_current_velocity?.[idx] : undefined;   // km/h
     const curD   = idx >= 0 ? hourly.ocean_current_direction?.[idx] : undefined;
 
@@ -260,8 +275,8 @@ ${lines.join('\n')}
 }
 
 // ── メール本文を生成 ───────────────────────────────────────
-function buildEmailBody({ score, capped = false, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx = -1 }) {
-  const windKmh  = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m.toFixed(0) : '--';
+function buildEmailBody({ score, capped = false, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx = -1, worst = null, cap = 10 }) {
+  const windMs   = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m.toFixed(1) : '--';
   const windDeg  = weather.current?.wind_direction_10m;
   const windDir  = windDeg != null ? degToCompass(windDeg) : '';
 
@@ -309,25 +324,38 @@ function buildEmailBody({ score, capped = false, weather, naha, route, kerama, d
     const mIdx = kerama.hourly.time.indexOf(t);
     const wave = mIdx >= 0 ? kerama.hourly.wave_height[mIdx]?.toFixed(1) : '--';
     const dir  = wHDirs?.[i] != null ? degToCompass(wHDirs[i]) : '';
-    acc.push(`  ${t.slice(11,16)}  ${wTemps[i]?.toFixed(0)}℃  風${wWinds[i]?.toFixed(0)}km/h(${dir})  波${wave}m`);
+    acc.push(`  ${t.slice(11,16)}  ${wTemps[i]?.toFixed(0)}℃  風${wWinds[i]?.toFixed(1)}m/s(${dir})  波${wave}m`);
     return acc;
   }, []);
 
   // 週間スコア
   const weekly = weeklyScores(weather, kerama)
-    .map(d => `  ${d.dayLabel}: ${d.score}/10 ${d.icon}`)
+    .map(d => `  ${d.dayLabel}: ${d.score != null ? d.score + '/10' : '判定不能'} ${d.icon}`)
     .join('\n');
+
+  const nowLabel = new Date().toLocaleTimeString('ja-JP', {
+    timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit',
+  });
+
+  // 日中(7〜16時)の最低スコア。上限は本文でも適用する（気象庁の警報を本文だけ黙殺せんため）。
+  // CSVに記録する素の値とはここで意図的にズレる（記録は系列の連続性を優先）
+  const worstShown = worst?.score != null ? Math.min(worst.score, cap) : null;
+  const gap = score != null && worstShown != null ? score - worstShown : 0;
+  const worstLine = worstShown != null
+    ? `\n📉 日中(7〜16時)の最低: ${worstShown}/10（${worst.time}頃）` +
+      (gap >= 2 ? '\n⚠️ 今の値より日中の方が荒れます。出港前に時刻別予報を確認してください' : '')
+    : '';
 
   const urlLine = APP_URL ? `\n詳細はアプリで: ${APP_URL}` : '';
 
   return `優くん、おはようございます！今日の慶良間コンディションです 🤿
-
+${unitNoticeFor(todayStr)}
 ━━━ 今日の出港判断 ━━━
-コンディションスコア: ${score != null ? `${score}/10` : '判定不能'}
-${scoreText(score)}${capped ? '\n⚠️ 警報・注意報の発表中のため、スコアに上限を適用しています' : ''}
+コンディションスコア: ${score != null ? `${score}/10` : '判定不能'}（${nowLabel}時点）
+${scoreText(score)}${capped ? '\n⚠️ 警報・注意報の発表中のため、スコアに上限を適用しています' : ''}${worstLine}
 ${buildWarningsSection(warningsJson)}
 ━━━ 3地点の状況 ━━━
-📍 那覇港沖:  波${nahaWave}m / 風${windKmh}km/h ${windDir}
+📍 那覇港沖:  波${nahaWave}m / 風${windMs}m/s ${windDir}
 ⛵ 航路中間:  波${routeWave}m
 🤿 慶良間沖:  波${keramaWave}m / 海水温${sst}℃
 ${buildDivePointsSection(divePoints, weather, parsedWarnings)}
@@ -340,7 +368,7 @@ ${buildDivePointsSection(divePoints, weather, parsedWarnings)}
 ━━━ 時刻別予報（7:00〜16:00） ━━━
 ${hourRows.join('\n')}
 
-━━━ 週間コンディション ━━━
+━━━ 週間コンディション（その日の最大波ベース）━━━
 ${weekly}
 ${urlLine}
 
@@ -389,7 +417,7 @@ async function main() {
   // 欠損を良好値（波1.0m等）で埋めるフォールバックは廃止（2026-07-19 評議会 裁可項目1）
   const hIdx = findCurrentHourIndex(kerama.hourly.time ?? []);
   const currentWave = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx] : undefined;
-  const currentWind = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m / 3.6 : undefined;
+  const currentWind = weather.current?.wind_speed_10m;   // m/s（APIで指定済み）
   const rawScore = calcScore({
     waveHeight:  currentWave,
     windSpeed:   currentWind,
@@ -402,7 +430,11 @@ async function main() {
   const score  = rawScore == null ? null : Math.min(rawScore, cap);
   const capped = rawScore != null && cap < rawScore;
 
-  const body = buildEmailBody({ score, capped, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx });
+  // 日中(7〜16時)の最低スコア。朝5時の値だけでは「朝は凪でも昼から荒れる日」を見落とすため、
+  // CSVに記録するだけでなく本文にも出す（記録しても優くんの目に入らんかったら意味がない）
+  const worst = worstScore716(weather, kerama, todayStr);
+
+  const body = buildEmailBody({ score, capped, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx, worst, cap });
 
   // DRY_RUN=1 なら送信せずに本文を表示して終了（ローカルテスト用。シート記録も行わない）
   if (dryRun) {
@@ -411,7 +443,7 @@ async function main() {
     return;
   }
 
-  const worst = worstScore716(weather, kerama, todayStr);
+  // CSVには上限を掛けん素の値を記録し続ける（2026-07-23からの33日分と系列をそろえるため）
   appendScoreHistory({ todayStr, score, capped, cap, worst, parsedWarnings });
 
   const transporter = nodemailer.createTransport({

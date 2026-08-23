@@ -29,6 +29,12 @@ jobs:
         working-directory: notify
         run: npm install
 
+      # 毎朝ここで走らせる意味: 気象庁側で市町村コードや配信書式が変わった場合、
+      # コードを一切触っとらんくても壊れる。その日の実データに対して毎朝検証する。
+      # 落ちたときはメールを送らずにジョブを失敗させる（誤った案内を送るより届かん方が安全）
+      - name: 安全ロジックの回帰テスト
+        run: node --test tests/safety.test.mjs
+
       - name: 朝のサマリーをメール送信
         working-directory: notify
         env:
@@ -46,7 +52,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add score-history.csv
-            git commit -m "記録: $(date -u +%Y-%m-%d) のスコア履歴"
+            git commit -m "記録: $(TZ=Asia/Tokyo date +%Y-%m-%d) のスコア履歴"  # CSVの行はJST基準。-u（UTC）だと1日ずれる
             git push || echo "⚠️ push失敗（他の変更と衝突した可能性。次回に持ち越し）"
           else
             echo "スコア履歴に変更なし（DRY_RUN、または本日分は記録済み）"
