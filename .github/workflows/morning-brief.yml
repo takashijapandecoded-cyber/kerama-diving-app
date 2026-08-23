@@ -9,6 +9,11 @@ on:
         description: 'テスト送信先メール（省略時はTO_EMAILへ）'
         required: false
         default: ''
+      dry_run:
+        description: 'メールを送らず本文だけ確認する（スコア履歴CSVにも書かない）'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write  # スコア履歴CSVを自動コミットするため（読み取りのみのreadから変更）
@@ -50,11 +55,16 @@ jobs:
           APP_URL:            ${{ secrets.APP_URL }}
           # 落ちとる場合は数字を一切出さん縮退メールに切り替わる
           SAFETY_TESTS_FAILED: ${{ steps.safety_tests.outcome == 'failure' && '1' || '0' }}
+          # 手動テスト用。'1' のとき daily-brief.js は送信もCSV記録もせず本文を出すだけ。
+          # 2026-08-24 00:59 のテスト送信で score5am の列に朝5時でない値が入ってしまった
+          # ため追加（日付をまたいでテストするとCSVに実行時刻の値が残る）
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
         run: node daily-brief.js
 
-      # テストが落ちとる日は数字を信用できんので履歴に残さない
+      # テストが落ちとる日は数字を信用できんので履歴に残さない。
+      # DRY_RUN 時は daily-brief.js 側でも書かんが、意図を明示するため条件にも入れる
       - name: スコア履歴CSVをコミット
-        if: steps.safety_tests.outcome == 'success'
+        if: steps.safety_tests.outcome == 'success' && github.event.inputs.dry_run != 'true'
         working-directory: notify
         run: |
           if [ -n "$(git status --porcelain score-history.csv)" ]; then
