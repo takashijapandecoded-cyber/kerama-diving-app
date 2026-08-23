@@ -2,11 +2,13 @@ import { fetchAll } from './api.js';
 import { calcScore, calcSubScores, warningScoreCap, findCurrentHourIndex } from './score.js';
 import { parseWarnings } from './warnings.js';
 import { showNoticeIfDue } from './notice.js';
+import { pickPrimary, dailyOutlook, waveMaxByDate } from './typhoon.js';
 import {
   renderHero,
   renderConditionCards,
   renderDivePoints,
   renderWarningChips,
+  renderTyphoon,
   renderCalendar,
   renderTideChart,
   renderForecastTable,
@@ -27,8 +29,16 @@ function dataSignature(weather, kerama, warningsJson) {
   return `${t1}_${t2}_${t3}`;
 }
 
-function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson) {
+function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson, typhoons) {
   const warnings = parseWarnings(warningsJson);
+
+  // 台風: 慶良間にいちばん効く1つを選び、日別の見通し（確率＋波高）を組む。
+  // 全部0%なら primary は null になり、カードは出ずチップだけになる
+  const tcResult  = typhoons ?? { status: 'unavailable', typhoons: [] };
+  tcResult.primary = pickPrimary(tcResult.typhoons);
+  const tcOutlook = tcResult.primary
+    ? dailyOutlook(tcResult.primary, waveMaxByDate(kerama))
+    : null;
 
   // フェイルセーフ（2026-07-19 評議会 裁可項目1）:
   // 欠損を「良好」な値で埋めない。波・風が取れんときは calcScore が null（判定不能）を返し、
@@ -48,7 +58,8 @@ function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson)
   subScores.temp  = weather?.current?.temperature_2m != null ? Math.round(weather.current.temperature_2m) : null;
 
   renderHero(epic, score, subScores, { capped: rawScore != null && cap < rawScore });
-  renderWarningChips(warnings);
+  renderWarningChips(warnings, tcResult);
+  renderTyphoon(tcResult, tcOutlook);
   renderConditionCards(weather, naha, route, kerama);
   renderDivePoints(divePoints, weather, warnings);
   renderDataInfo(weather);
@@ -73,7 +84,7 @@ async function main() {
     ? { epic: null, weather: null, naha: null, route: null, kerama: null, divePoints: null, warnings: null }
     : await fetchAll();
   let currentSig = dataSignature(data.weather, data.kerama, data.warnings);
-  renderAll(data.epic, data.weather, data.naha, data.route, data.kerama, data.divePoints, data.warnings);
+  renderAll(data.epic, data.weather, data.naha, data.route, data.kerama, data.divePoints, data.warnings, data.typhoons);
 
   const updateBtn = document.getElementById('update-btn');
   let latestData  = data;
@@ -107,7 +118,7 @@ async function main() {
 
   updateBtn.addEventListener('click', () => {
     currentSig = dataSignature(latestData.weather, latestData.kerama, latestData.warnings);
-    renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama, latestData.divePoints, latestData.warnings);
+    renderAll(latestData.epic, latestData.weather, latestData.naha, latestData.route, latestData.kerama, latestData.divePoints, latestData.warnings, latestData.typhoons);
     updateBtn.classList.add('hidden');
   });
 }

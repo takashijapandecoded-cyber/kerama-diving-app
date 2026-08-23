@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台風表示案B ─ 既存デザインとの調和</title>
+<style>
+/* ══════════════════════════════════════════════════════════
+   案B: 既存デザインとの調和
+   ─ 本番の css/style.css から該当ルールをそのまま持ってきている。
+     新規に足したのは #typhoon-card 一式のみ。色は既存変数だけ。
+══════════════════════════════════════════════════════════ */
+
+/* ── 本番と同じカスタムプロパティ ───────────────────────── */
+:root {
+  --bg:       #0a1628;
+  --surface:  #1a2744;
+  --surface2: #243358;
+  --accent:   #00b4d8;
+  --text:     #e2e8f0;
+  --muted:    #94a3b8;
+  --border:   rgba(148,163,184,0.15);
+  --go:       #22c55e;
+  --caution:  #f59e0b;
+  --danger:   #ef4444;
+  --radius:   12px;
+  --banner-h: 3rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 2rem 1.5rem 4rem;
+}
+
+/* ── この資料自体の体裁（モックの外側） ─────────────────── */
+.doc-head { max-width: 860px; margin: 0 auto 2.5rem; }
+.doc-title {
+  font-size: 1.25rem; font-weight: 800; color: var(--accent);
+  letter-spacing: 0.04em; margin-bottom: 0.5rem;
+}
+.doc-lead { font-size: 0.88rem; color: var(--text); line-height: 1.8; }
+.doc-lead b { color: var(--accent); }
+.doc-meta {
+  margin-top: 0.9rem; font-size: 0.75rem; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem;
+  line-height: 1.7;
+}
+
+.mock-row {
+  display: flex; flex-wrap: wrap; gap: 2.5rem;
+  align-items: flex-start; justify-content: center;
+}
+
+.mock { width: 375px; flex: 0 0 375px; }
+
+.mock-cap {
+  font-size: 0.85rem; font-weight: 800; color: var(--accent);
+  margin-bottom: 0.5rem; letter-spacing: 0.04em;
+}
+.mock-cap .mock-sub { display: block; font-weight: 400; font-size: 0.72rem; color: var(--muted); letter-spacing: 0; }
+
+.mock-note {
+  margin-top: 0.75rem; font-size: 0.78rem; line-height: 1.75; color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem 0.8rem;
+}
+.mock-note b { color: var(--accent); }
+.mock-note .k { color: var(--muted); font-size: 0.72rem; }
+
+/* ── iPhone 375px の実寸フレーム ───────────────────────── */
+.frame {
+  width: 375px;
+  height: 760px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg);
+}
+.frame.frame-short { height: 300px; }
+
+/* 本番のヒーロー（衛星写真＋オーバーレイ）を外部画像なしで再現 */
+.frame-bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 70% at 30% 0%, rgba(0,90,150,0.55) 0%, rgba(0,40,80,0.35) 45%, rgba(10,22,40,0) 75%),
+    linear-gradient(180deg,
+      rgba(0,12,35,0.18)  0%,
+      rgba(0,25,60,0.50) 28%,
+      rgba(5,15,38,0.82) 65%,
+      rgba(8,20,40,0.97) 100%),
+    var(--bg);
+}
+
+.frame-inner {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 1rem;
+  padding: 0 1rem 2rem;
+  overflow: hidden;
+}
+.frame-fade {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 90px; z-index: 3;
+  background: linear-gradient(180deg, rgba(10,22,40,0) 0%, rgba(10,22,40,0.95) 70%, var(--bg) 100%);
+  pointer-events: none;
+}
+
+/* ── 出港判断バナー（本番 #go-nogo-banner） ────────────── */
+.banner {
+  position: relative; z-index: 5;
+  height: var(--banner-h);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.15rem; font-weight: 800; letter-spacing: 0.06em;
+  flex: 0 0 auto; margin: 0 -1rem;
+  width: 375px;
+}
+.banner-go      { background: #1a9e5c; color: #fff; }
+.banner-caution { background: #d4890a; color: #fff; }
+.banner-nogo    { background: #c0392b; color: #fff; }
+.banner-nodata  { background: #475569; color: #fff; }
+
+/* ── ページドット／ラベル（本番 #page-dots / #page-labels） ── */
+.nav { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 14px; }
+.dots { display: flex; gap: 12px; }
+.dot {
+  box-sizing: content-box; width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.3); background-clip: content-box; padding: 4px; margin: -4px;
+}
+.dot.active { background: var(--accent); transform: scale(1.4); box-shadow: 0 0 8px rgba(0,180,216,0.7), 0 0 16px rgba(0,180,216,0.35); }
+.labels { display: flex; gap: 1.5rem; }
+.plabel { font-size: 0.7rem; color: rgba(255,255,255,0.35); letter-spacing: 0.05em; white-space: nowrap; }
+.plabel.active { color: rgba(255,255,255,0.9); }
+
+/* ── ヒーロー見出し ─────────────────────────────────────── */
+.hero-location {
+  font-size: 0.8rem; color: var(--accent); letter-spacing: 0.18em;
+  text-shadow: 0 0 20px rgba(0,180,216,0.6); text-align: center;
+}
+.hero-date { font-size: 0.95rem; color: rgba(226,232,240,0.7); margin-top: -0.75rem; }
+
+/* ── 警報・注意報チップ（本番 #warning-chips / .warn-chip） ─ */
+.warning-chips {
+  display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center;
+  max-width: 340px; width: 100%;
+}
+.warn-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  border-radius: 999px; padding: 0.28rem 0.75rem;
+  font-size: 0.72rem; font-weight: 700;
+  /* 本番は backdrop-filter: blur(6px) — この資料では平面背景のため省略 */
+  position: relative;
+}
+.warn-advisory { background: rgba(245,158,11,0.16); border: 1px solid rgba(245,158,11,0.5); color: #fbbf24; }
+.warn-warning  { background: rgba(239,68,68,0.20); border: 1px solid rgba(239,68,68,0.65); color: #f87171; font-size: 0.78rem; }
+.warn-none     { background: rgba(34,197,94,0.12); color: #86efac; border: 1px solid rgba(34,197,94,0.35); }
+.warn-unavailable { background: rgba(100,116,139,0.25); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.5); }
+
+/* ★ 新規はここだけ: 台風チップの「情報」段階（既存 .tide-best と同じアクセント配色） */
+.warn-tc-info { background: rgba(0,180,216,0.12); border: 1px solid rgba(0,180,216,0.45); color: var(--accent); }
+
+/* ★ タップ判定を44pxに広げる（本番の .dot / .plabel と同じ考え方。ただし
+      レイアウトを動かさないよう擬似要素で確保する） */
+.tc-tappable::after {
+  content: ''; position: absolute; left: -6px; right: -6px;
+  top: 50%; transform: translateY(-50%); height: 44px;
+}
+.tc-caret { font-size: 0.62rem; opacity: 0.75; margin-left: 0.1rem; }
+
+/* ── スコアカード（本番 #score-container 一式） ─────────── */
+.score-container {
+  background: rgba(10,30,60,0.55);
+  border: 1px solid rgba(0,180,216,0.35);
+  border-radius: 24px;
+  padding: 1.25rem 1.5rem 1rem;
+  /* 本番は backdrop-filter: blur(20px) saturate(1.4) — この資料では省略 */
+  box-shadow: 0 8px 40px rgba(0,0,0,0.60), 0 0 80px rgba(0,180,216,0.06),
+              inset 0 1px 0 rgba(255,255,255,0.13), inset 0 -1px 0 rgba(0,180,216,0.14);
+  width: 100%; max-width: 340px; text-align: center;
+}
+.ring-wrap { width: 132px; height: 132px; margin: 0 auto 0.5rem; }
+.ring-svg  { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible;
+             filter: drop-shadow(0 0 12px rgba(0,180,216,0.4)); }
+.ring-bg   { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 14; }
+.ring-score{ fill: none; stroke: url(#ring-grad); stroke-width: 14; stroke-linecap: round; stroke-dasharray: 502.65; }
+.ring-num  { fill: #fff; font-size: 46px; font-weight: 800; text-anchor: middle;
+             dominant-baseline: middle; transform: rotate(90deg); transform-origin: 100px 100px; }
+.ring-denom{ fill: rgba(148,163,184,0.8); font-size: 16px; text-anchor: middle;
+             dominant-baseline: middle; transform: rotate(90deg); transform-origin: 100px 100px; }
+.score-text { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 0.6rem; }
+.score-cap-note { font-size: 0.72rem; color: #fbbf24; margin: -0.3rem 0 0.5rem; }
+
+.sub-scores { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; row-gap: 0.4rem; }
+.sub-chip {
+  background: linear-gradient(135deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 100%);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+  padding: 0.4rem 0.45rem; min-width: 48px; text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.3);
+}
+.sub-icon  { font-size: 1rem; line-height: 1; }
+.sub-label { font-size: 0.68rem; color: var(--muted); margin: 0.1rem 0; }
+.sub-val   { font-size: 0.85rem; font-weight: 700; }
+
+/* ── 3地点カード（本番 .condition-card） ────────────────── */
+.conditions-grid { display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 340px; }
+.condition-card {
+  background: linear-gradient(160deg, rgba(26,39,68,0.82) 0%, rgba(12,22,48,0.78) 100%);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0.75rem 0.6rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07);
+}
+.card-title    { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.1rem; }
+.card-subtitle { font-size: 0.6rem; color: var(--muted); margin-bottom: 0.5rem; }
+.card-row { display: flex; justify-content: space-between; padding: 0.2rem 0;
+            border-bottom: 1px solid var(--border); gap: 0.25rem; }
+.card-row:last-child { border-bottom: none; }
+.label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+.value { font-size: 0.82rem; font-weight: 600; text-align: right; }
+
+/* ══════════════════════════════════════════════════════════
+   ★ 新規部品: 台風カード #typhoon-card
+     .condition-card をそのまま親に、行は .card-row、
+     左の警戒バーは .dive-point-row.has-warn-* と同じ 3px、
+     日別の帯は #calendar-grid / .cal-cell をそのまま流用。
+══════════════════════════════════════════════════════════ */
+.typhoon-card {
+  background: linear-gradient(160deg, rgba(26,39,68,0.82) 0%, rgba(12,22,48,0.78) 100%);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0.75rem 0.6rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07);
+  width: 100%; max-width: 340px;
+}
+.typhoon-card.lvl-info    { border-left: 3px solid rgba(0,180,216,0.55); }
+.typhoon-card.lvl-caution { border-left: 3px solid var(--caution); }
+.typhoon-card.lvl-danger  { border-left: 3px solid var(--danger); }
+
+.tc-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.tc-head .card-title { margin-bottom: 0; }
+
+/* 本番 .score-chip をそのまま（丸ピル・白文字・0.82rem） */
+.score-chip {
+  display: inline-block; padding: 0.12rem 0.55rem; border-radius: 999px;
+  font-size: 0.82rem; font-weight: 700; color: #fff; min-width: 1.8rem; text-align: center;
+  flex-shrink: 0;
+}
+
+/* 日別の確率帯 ＝ 本番 #calendar-grid / .cal-cell と同一の見た目 */
+.tc-strip-title { font-size: 0.6rem; color: var(--muted); margin: 0.6rem 0 0.3rem; }
+.tc-days { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0.25rem; }
+.tc-day {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.35rem 0.1rem; text-align: center; min-width: 0; overflow: hidden;
+}
+.tc-day-name { font-size: 0.68rem; color: var(--muted); }
+.tc-day-num  { font-size: 0.88rem; font-weight: 700; }
+.tc-day-val  { font-size: 0.68rem; font-weight: 700; }
+.cal-good {
+  background: linear-gradient(160deg, rgba(34,197,94,0.18), rgba(34,197,94,0.06));
+  box-shadow: inset 0 0 0 1px rgba(34,197,94,0.30), 0 2px 8px rgba(34,197,94,0.12);
+  border-color: var(--go);
+}
+.cal-caution {
+  background: linear-gradient(160deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06));
+  box-shadow: inset 0 0 0 1px rgba(245,158,11,0.30), 0 2px 8px rgba(245,158,11,0.10);
+  border-color: var(--caution);
+}
+.cal-bad {
+  background: linear-gradient(160deg, rgba(239,68,68,0.18), rgba(239,68,68,0.06));
+  box-shadow: inset 0 0 0 1px rgba(239,68,68,0.28), 0 2px 8px rgba(239,68,68,0.10);
+  border-color: var(--danger);
+}
+.tc-day.is-today { outline: 1px solid rgba(255,255,255,0.35); outline-offset: 1px; }
+
+.tc-lead {
+  font-size: 0.78rem; font-weight: 700; line-height: 1.5;
+  margin: 0.5rem 0 0.15rem;
+}
+.tc-lead.lvl-danger  { color: #f87171; }
+.tc-lead.lvl-caution { color: #fbbf24; }
+.tc-source { font-size: 0.6rem; color: var(--muted); margin-top: 0.5rem; text-align: right; }
+
+/* ── 説明用の凡例 ───────────────────────────────────────── */
+.legend {
+  max-width: 860px; margin: 3rem auto 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+.legend h2 {
+  font-size: 1rem; font-weight: 700; color: var(--accent);
+  margin-bottom: 0.75rem; padding-bottom: 0.45rem; position: relative;
+}
+.legend h2::after {
+  content: ''; position: absolute; left: 0; bottom: 0; width: 2rem; height: 2px;
+  border-radius: 2px; background: linear-gradient(90deg, var(--accent), transparent);
+}
+.legend p { font-size: 0.85rem; line-height: 1.85; margin-bottom: 0.6rem; }
+.legend ol { margin: 0 0 0.5rem 1.2rem; }
+.legend li { font-size: 0.85rem; line-height: 1.85; margin-bottom: 0.3rem; }
+.legend b { color: var(--accent); }
+.legend code {
+  font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem;
+  background: var(--surface2); border-radius: 4px; padding: 0.05rem 0.3rem; color: var(--text);
+}
+.legend table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 0.5rem 0 0.8rem; }
+.legend th { text-align: left; padding: 0.4rem 0.5rem; font-size: 0.72rem; color: var(--muted);
+             border-bottom: 1px solid var(--border); }
+.legend td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+</style>
+</head>
+<body>
+
+<div class="doc-head">
+  <div class="doc-title">案B ─ 既存デザインとの調和</div>
+  <div class="doc-lead">
+    台風は<b>「警報・注意報チップの仲間」</b>として扱う。平常時はチップ1個だけ。
+    慶良間が暴風域に入る確率が立った時にだけ、チップの真下にカードが開く。
+    使う部品は既存の <code>.warn-chip</code> / <code>.condition-card</code> /
+    <code>.card-row</code> / <code>.cal-cell</code> / <code>.score-chip</code> で、
+    色は既存のCSS変数のみ。新しい色も新しい形も足していない。
+  </div>
+  <div class="doc-meta">
+    台風の諸元・暴風域に入る確率・波高・スコアは、ブリーフ 3-4 の実データ（気象庁 2026年8月23日21時45分発表）をそのまま使用。
+    それ以外の数値（風速・気温・天気など平常時の値）は、配置と余白を確かめるための仮の値です。<br>
+    各フレームは 375px 実寸。上端の出港判断バナー・ページドット・ヒーロー見出しも本番と同じ寸法で再現しています。
+  </div>
+</div>
+
+<div class="mock-row">
+
+  <!-- ═══════════ 状態A: 台風なし ═══════════ -->
+  <div class="mock">
+    <div class="mock-cap">状態A ─ 台風なし
+      <span class="mock-sub">年の大半。2026年6月12日(金)の想定</span>
+    </div>
+    <div class="frame">
+      <div class="frame-bg"></div>
+      <div class="frame-inner">
+        <div class="banner banner-go">✅ 出港OK（要現地確認）</div>
+        <div class="nav">
+          <div class="dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="labels">
+            <span class="plabel active">🌊 今日</span><span class="plabel">🤿 海況</span>
+            <span class="plabel">🕐 予報</span><span class="plabel">📖 基準</span>
+          </div>
+        </div>
+        <div class="hero-location">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年6月12日(金)</div>
+
+        <div class="warning-chips">
+          <span class="warn-chip warn-none">✅ 警報・注意報なし</span>
+          <span class="warn-chip warn-none">🌀 台風なし</span>
+        </div>
+
+        <div class="score-container">
+          <div class="ring-wrap">
+            <svg class="ring-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <defs><linearGradient id="ring-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#22c55e"/><stop offset="100%" stop-color="#0ea5e9"/>
+              </linearGradient></defs>
+              <circle class="ring-bg" cx="100" cy="100" r="80"/>
+              <circle class="ring-score" cx="100" cy="100" r="80" style="stroke-dashoffset:100.5"/>
+              <text x="100" y="88" class="ring-num">8</text>
+              <text x="100" y="115" class="ring-denom">/ 10</text>
+            </svg>
+          </div>
+          <div class="score-text">✅ 良好なコンディション</div>
+          <div class="sub-scores">
+            <div class="sub-chip"><div class="sub-icon">🌊</div><div class="sub-label">波</div><div class="sub-val">0.8m</div></div>
+            <div class="sub-chip"><div class="sub-icon">💨</div><div class="sub-label">風</div><div class="sub-val">5m/s</div></div>
+            <div class="sub-chip"><div class="sub-icon">☀️</div><div class="sub-label">天気</div><div class="sub-val">晴れ</div></div>
+            <div class="sub-chip"><div class="sub-icon">〰️</div><div class="sub-label">うねり</div><div class="sub-val">9秒</div></div>
+            <div class="sub-chip"><div class="sub-icon">🌡</div><div class="sub-label">気温</div><div class="sub-val">29℃</div></div>
+          </div>
+        </div>
+
+        <div class="conditions-grid">
+          <div class="condition-card">
+            <div class="card-title">📍 那覇港沖</div>
+            <div class="card-subtitle">出港条件</div>
+            <div class="card-row"><span class="label">波高</span><span class="value">0.7m</span></div>
+            <div class="card-row"><span class="label">風速</span><span class="value">4.8m/s</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-fade"></div>
+    </div>
+    <div class="mock-note">
+      <b>置き場所:</b> 既存の <code>#warning-chips</code> の中。台風専用の場所は作らない。<br>
+      <b>平常時のふるまい:</b> <code>.warn-chip.warn-none</code>（緑）で「🌀 台風なし」と1個だけ。
+      「✅ 警報・注意報なし」と同じ行に折り返しで並ぶので、<b>縦に増える高さはゼロ</b>。
+      それでも「何も出さない」はしない ─ 取得失敗と平穏の区別がつかなくなるため、既存チップの流儀に合わせる。
+    </div>
+  </div>
+
+  <!-- ═══════════ 状態B: 台風はあるが遠い ═══════════ -->
+  <div class="mock">
+    <div class="mock-cap">状態B ─ 台風はあるが遠い
+      <span class="mock-sub">2026年8月23日(日) ／ 1301km・暴風域に入る確率0%</span>
+    </div>
+    <div class="frame">
+      <div class="frame-bg"></div>
+      <div class="frame-inner">
+        <div class="banner banner-go">✅ 出港OK（要現地確認）</div>
+        <div class="nav">
+          <div class="dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="labels">
+            <span class="plabel active">🌊 今日</span><span class="plabel">🤿 海況</span>
+            <span class="plabel">🕐 予報</span><span class="plabel">📖 基準</span>
+          </div>
+        </div>
+        <div class="hero-location">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月23日(日)</div>
+
+        <div class="warning-chips">
+          <span class="warn-chip warn-none">✅ 警報・注意報なし</span>
+          <span class="warn-chip warn-tc-info tc-tappable">🌀 台風18号 影響なし<span class="tc-caret">▾</span></span>
+          <span class="warn-chip warn-tc-info tc-tappable">🌀 ほか3つ 影響なし<span class="tc-caret">▾</span></span>
+        </div>
+
+        <div class="score-container">
+          <div class="ring-wrap">
+            <svg class="ring-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <circle class="ring-bg" cx="100" cy="100" r="80"/>
+              <circle class="ring-score" cx="100" cy="100" r="80" style="stroke-dashoffset:201"/>
+              <text x="100" y="88" class="ring-num">6</text>
+              <text x="100" y="115" class="ring-denom">/ 10</text>
+            </svg>
+          </div>
+          <div class="score-text">⚠️ まずまず</div>
+          <div class="sub-scores">
+            <div class="sub-chip"><div class="sub-icon">🌊</div><div class="sub-label">波</div><div class="sub-val">1.2m</div></div>
+            <div class="sub-chip"><div class="sub-icon">💨</div><div class="sub-label">風</div><div class="sub-val">7m/s</div></div>
+            <div class="sub-chip"><div class="sub-icon">☀️</div><div class="sub-label">天気</div><div class="sub-val">曇り</div></div>
+            <div class="sub-chip"><div class="sub-icon">〰️</div><div class="sub-label">うねり</div><div class="sub-val">8秒</div></div>
+            <div class="sub-chip"><div class="sub-icon">🌡</div><div class="sub-label">気温</div><div class="sub-val">31℃</div></div>
+          </div>
+        </div>
+
+        <div class="conditions-grid">
+          <div class="condition-card">
+            <div class="card-title">📍 那覇港沖</div>
+            <div class="card-subtitle">出港条件</div>
+            <div class="card-row"><span class="label">波高</span><span class="value">1.1m</span></div>
+            <div class="card-row"><span class="label">風速</span><span class="value">6.5m/s</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-fade"></div>
+    </div>
+    <div class="mock-note">
+      <b>なぜこの形か:</b> 台風が4つ同時にあっても、慶良間が暴風域に入る確率が0%なら
+      今日の判断には効かない。だから<b>チップのままにして、カードは開かない</b>。
+      下がるのはチップ1行ぶん（約24px）だけで、コンディションボードはほぼ元の位置に残る。
+      色は「情報」を表す既存のアクセント（<code>.tide-best</code> と同じ
+      <code>rgba(0,180,216,0.12)</code> ＋ <code>var(--accent)</code>）で、赤でも黄でもない。<br>
+      <b>複数台風:</b> 番号を1つずつ並べない。慶良間に確率が立っているものだけ名前で出し、
+      残りは「ほか3つ 影響なし」と1個にまとめる。<br>
+      <b>▾ はタップで開く合図。</b>タップ判定は擬似要素で44px確保している（見た目は動かさない）。
+    </div>
+  </div>
+
+  <!-- ═══════════ 状態B（タップして開いた状態） ═══════════ -->
+  <div class="mock">
+    <div class="mock-cap">状態B ─ チップをタップして開いたところ
+      <span class="mock-sub">チップ周辺のみ抜粋 ／ 開く部品は状態Cと同じ</span>
+    </div>
+    <div class="frame frame-short" style="height:350px">
+      <div class="frame-bg"></div>
+      <div class="frame-inner" style="padding-top:1rem">
+        <div class="warning-chips">
+          <span class="warn-chip warn-none">✅ 警報・注意報なし</span>
+          <span class="warn-chip warn-tc-info tc-tappable">🌀 台風18号 影響なし<span class="tc-caret">▴</span></span>
+          <span class="warn-chip warn-tc-info tc-tappable">🌀 ほか3つ 影響なし<span class="tc-caret">▾</span></span>
+        </div>
+
+        <div class="typhoon-card lvl-info">
+          <div class="tc-head">
+            <div>
+              <div class="card-title">🌀 台風18号 ソウデル</div>
+              <div class="card-subtitle" style="margin-bottom:0">日本の南 ・ 北西へ進行中</div>
+            </div>
+            <span class="score-chip" style="background:var(--go)">0%</span>
+          </div>
+          <div style="margin-top:0.5rem">
+            <div class="card-row"><span class="label">慶良間まで</span><span class="value">1301km</span></div>
+            <div class="card-row"><span class="label">中心気圧 / 最大風速</span><span class="value">950hPa / 45m/s</span></div>
+            <div class="card-row"><span class="label">暴風域</span><span class="value">半径150km</span></div>
+            <div class="card-row"><span class="label">暴風域に入る確率</span><span class="value">5日先まで 0%</span></div>
+          </div>
+          <div class="tc-source">気象庁 8月23日21時45分発表</div>
+        </div>
+      </div>
+    </div>
+    <div class="mock-note">
+      開いても<b>見た目は既存の3地点カードそのまま</b>（<code>.condition-card</code> ＋
+      <code>.card-row</code> の label / value）。右の丸ピルは予報テーブルの
+      <code>.score-chip</code> を流用して、確率を1つの数字で置く。<br>
+      左端の3pxの縦線は、本番の <code>.dive-point-row.has-warn-*</code> と同じ警戒バー。
+      ここでは危険ではないのでアクセント色にとどめる。
+    </div>
+  </div>
+
+  <!-- ═══════════ 状態C: 暴風域が確定的 ═══════════ -->
+  <div class="mock">
+    <div class="mock-cap">状態C ─ 暴風域が確定的
+      <span class="mock-sub">2026年8月24日(月)の朝 ／ 26日(水)までに確率96%・最接近179km</span>
+    </div>
+    <div class="frame" style="height:1060px">
+      <div class="frame-bg"></div>
+      <div class="frame-inner">
+        <div class="banner banner-caution">⚠️ 注意して判断</div>
+        <div class="nav">
+          <div class="dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="labels">
+            <span class="plabel active">🌊 今日</span><span class="plabel">🤿 海況</span>
+            <span class="plabel">🕐 予報</span><span class="plabel">📖 基準</span>
+          </div>
+        </div>
+        <div class="hero-location">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月24日(月)</div>
+
+        <div class="warning-chips">
+          <span class="warn-chip warn-advisory">⚡ 波浪注意報</span>
+          <span class="warn-chip warn-warning tc-tappable">🌀 台風18号 26日(水)に暴風域 96%<span class="tc-caret">▴</span></span>
+        </div>
+
+        <div class="typhoon-card lvl-danger">
+          <div class="tc-head">
+            <div>
+              <div class="card-title">🌀 台風18号 ソウデル</div>
+              <div class="card-subtitle" style="margin-bottom:0">日本の南 ・ 北西へ進行中</div>
+            </div>
+            <span class="score-chip" style="background:var(--danger)">96%</span>
+          </div>
+
+          <div class="tc-lead lvl-danger">26日(水)までに慶良間が暴風域に入る確率 96%</div>
+
+          <div class="tc-strip-title">暴風域に入る確率（慶良間・粟国諸島／その日までの累積）</div>
+          <div class="tc-days">
+            <div class="tc-day cal-good is-today"><div class="tc-day-name">月</div><div class="tc-day-num">24</div><div class="tc-day-val" style="color:var(--go)">0%</div></div>
+            <div class="tc-day cal-caution"><div class="tc-day-name">火</div><div class="tc-day-num">25</div><div class="tc-day-val" style="color:var(--caution)">36%</div></div>
+            <div class="tc-day cal-bad"><div class="tc-day-name">水</div><div class="tc-day-num">26</div><div class="tc-day-val" style="color:#f87171">96%</div></div>
+            <div class="tc-day cal-bad"><div class="tc-day-name">木</div><div class="tc-day-num">27</div><div class="tc-day-val" style="color:#f87171">96%</div></div>
+          </div>
+
+          <div style="margin-top:0.6rem">
+            <div class="card-row"><span class="label">最も近づくのは</span><span class="value">25日(火)夜 179km</span></div>
+            <div class="card-row"><span class="label">いまの位置</span><span class="value">慶良間まで 650km</span></div>
+            <div class="card-row"><span class="label">中心気圧 / 最大風速</span><span class="value">940hPa / 45m/s</span></div>
+            <div class="card-row"><span class="label">暴風域</span><span class="value">半径210km（拡大中）</span></div>
+          </div>
+          <div class="tc-source">気象庁 8月23日21時45分発表</div>
+        </div>
+
+        <div class="score-container">
+          <div class="ring-wrap">
+            <svg class="ring-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <circle class="ring-bg" cx="100" cy="100" r="80"/>
+              <circle class="ring-score" cx="100" cy="100" r="80" style="stroke-dashoffset:251.3"/>
+              <text x="100" y="88" class="ring-num">5</text>
+              <text x="100" y="115" class="ring-denom">/ 10</text>
+            </svg>
+          </div>
+          <div class="score-text">⚠️ まずまず</div>
+          <div class="score-cap-note">⚓ 波浪注意報の発表中のためスコア上限6</div>
+          <div class="sub-scores">
+            <div class="sub-chip"><div class="sub-icon">🌊</div><div class="sub-label">波</div><div class="sub-val">1.7m</div></div>
+            <div class="sub-chip"><div class="sub-icon">💨</div><div class="sub-label">風</div><div class="sub-val">11m/s</div></div>
+            <div class="sub-chip"><div class="sub-icon">☀️</div><div class="sub-label">天気</div><div class="sub-val">曇り</div></div>
+            <div class="sub-chip"><div class="sub-icon">〰️</div><div class="sub-label">うねり</div><div class="sub-val">8秒</div></div>
+            <div class="sub-chip"><div class="sub-icon">🌡</div><div class="sub-label">気温</div><div class="sub-val">30℃</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-fade"></div>
+    </div>
+    <div class="mock-note">
+      <b>ここが案Bの主張:</b> 今日のスコアは5で「出られる」。でも水曜は96%。
+      <b>今日やるべきなのは係留と連絡</b>で、それは今日のスコアからは絶対に読めない。
+      だから確率が立った時だけ、カードを<b>コンディションボードより上</b>に置く。
+      平常時はチップだけなのでボードは動かない ─ 動いたこと自体が異常の合図になる。<br>
+      <b>チップは赤（既存 <code>.warn-warning</code>）に変わり、文字も0.72→0.78remに上がる。</b>
+      平常時との落差はこの色と文字サイズ、そしてカードが開くことの3つだけで作る。<br>
+      <b>日別の帯</b>は週間カレンダー <code>.cal-cell</code> をそのまま流用。緑・黄・赤の閾値も既存と同じ考え方で、
+      「いつ荒れるか」を横並びで読む型がアプリ内で1つに揃う。
+    </div>
+  </div>
+
+  <!-- ═══════════ 状態C′: 暴風域の中 ═══════════ -->
+  <div class="mock">
+    <div class="mock-cap">状態C′ ─ 暴風域の中（最悪日）
+      <span class="mock-sub">2026年8月26日(水) ／ 196km・波8.5m・スコア1</span>
+    </div>
+    <div class="frame" style="height:950px">
+      <div class="frame-bg"></div>
+      <div class="frame-inner">
+        <div class="banner banner-nogo">⛔ 出港中止</div>
+        <div class="nav">
+          <div class="dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="labels">
+            <span class="plabel active">🌊 今日</span><span class="plabel">🤿 海況</span>
+            <span class="plabel">🕐 予報</span><span class="plabel">📖 基準</span>
+          </div>
+        </div>
+        <div class="hero-location">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月26日(水)</div>
+
+        <div class="warning-chips">
+          <span class="warn-chip warn-warning">🌀 暴風警報・慶良間</span>
+          <span class="warn-chip warn-warning">🌊 波浪警報・慶良間</span>
+          <span class="warn-chip warn-warning tc-tappable">🌀 台風18号 暴風域の中<span class="tc-caret">▴</span></span>
+        </div>
+
+        <div class="typhoon-card lvl-danger">
+          <div class="tc-head">
+            <div>
+              <div class="card-title">🌀 台風18号 ソウデル</div>
+              <div class="card-subtitle" style="margin-bottom:0">沖縄の南西 ・ 北西へ進行中</div>
+            </div>
+            <span class="score-chip" style="background:var(--danger)">96%</span>
+          </div>
+
+          <div class="tc-lead lvl-danger">慶良間・粟国諸島は暴風域の中です</div>
+
+          <div style="margin-top:0.4rem">
+            <div class="card-row"><span class="label">慶良間まで</span><span class="value">196km</span></div>
+            <div class="card-row"><span class="label">暴風域</span><span class="value">半径300km</span></div>
+            <div class="card-row"><span class="label">中心気圧 / 最大風速</span><span class="value">965hPa / 40m/s</span></div>
+            <div class="card-row"><span class="label">抜けるのは</span><span class="value">27日(木)以降の見込み</span></div>
+          </div>
+          <div class="tc-source">気象庁 8月26日5時45分発表</div>
+        </div>
+
+        <div class="score-container">
+          <div class="ring-wrap">
+            <svg class="ring-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+              <circle class="ring-bg" cx="100" cy="100" r="80"/>
+              <circle class="ring-score" cx="100" cy="100" r="80" style="stroke-dashoffset:452.4"/>
+              <text x="100" y="88" class="ring-num">1</text>
+              <text x="100" y="115" class="ring-denom">/ 10</text>
+            </svg>
+          </div>
+          <div class="score-text">⛔ キャンセル推奨</div>
+          <div class="score-cap-note">⚓ 暴風警報の発表中のためスコア上限3</div>
+          <div class="sub-scores">
+            <div class="sub-chip"><div class="sub-icon">🌊</div><div class="sub-label">波</div><div class="sub-val">8.5m</div></div>
+            <div class="sub-chip"><div class="sub-icon">💨</div><div class="sub-label">風</div><div class="sub-val">28m/s</div></div>
+            <div class="sub-chip"><div class="sub-icon">☀️</div><div class="sub-label">天気</div><div class="sub-val">大雨</div></div>
+            <div class="sub-chip"><div class="sub-icon">〰️</div><div class="sub-label">うねり</div><div class="sub-val">11秒</div></div>
+            <div class="sub-chip"><div class="sub-icon">🌡</div><div class="sub-label">気温</div><div class="sub-val">27℃</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-fade"></div>
+    </div>
+    <div class="mock-note">
+      <b>暴風域に入ってしまえば、予報の帯は消す。</b>「いつ入るか」はもう答えが出ているので、
+      日別の確率をそのまま出し続けるのは邪魔になる。代わりに「抜けるのは27日(木)以降」だけを残す。<br>
+      気象庁の暴風警報チップ（既存 <code>.warn-warning</code>）と台風チップが並ぶが、
+      これは別の事実なので<b>まとめない</b>。警報は「いま吹いている」、台風は「なぜ吹いているか」。<br>
+      <b>点滅は使わない。</b>本番の <code>.warn-emergency</code> のパルスは特別警報のために取ってある。
+      台風で先に使ってしまうと、本当の最上位が埋もれる。
+    </div>
+  </div>
+
+  <!-- ═══════════ 状態D: 取得失敗・情報が古い ═══════════ -->
+  <div class="mock">
+    <div class="mock-cap">状態D ─ 取得失敗 / 更新停止
+      <span class="mock-sub">2種類のチップを並べて示している（実際はどちらか一方）</span>
+    </div>
+    <div class="frame frame-short" style="height:340px">
+      <div class="frame-bg"></div>
+      <div class="frame-inner">
+        <div class="banner banner-nodata">— 判定不能（データ取得エラー）</div>
+        <div class="nav">
+          <div class="dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="labels">
+            <span class="plabel active">🌊 今日</span><span class="plabel">🤿 海況</span>
+            <span class="plabel">🕐 予報</span><span class="plabel">📖 基準</span>
+          </div>
+        </div>
+        <div class="hero-location">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月25日(火)</div>
+
+        <div class="warning-chips">
+          <span class="warn-chip warn-unavailable">⚠️ 警報・注意報 取得できず</span>
+          <span class="warn-chip warn-unavailable">🌀 台風情報 取得できず</span>
+          <span class="warn-chip warn-unavailable">🌀 台風情報 6時間前の内容</span>
+        </div>
+      </div>
+    </div>
+    <div class="mock-note">
+      台風にも既存チップと同じ<b>4状態</b>を用意する ─
+      <span class="k">取得失敗 / 更新停止（古い） / 台風なし / 台風あり</span>。
+      配色は既存の <code>.warn-unavailable</code>（灰）をそのまま使い、
+      <b>「台風なし」の緑と絶対に見間違えない</b>ようにする。<br>
+      「更新停止」は、気象庁の発表時刻から3時間以上経っていたら経過時間を明示する。
+      台風接近中に情報が止まるのが一番危ないため、この状態は必ず可視化する。
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ 設計方針 ═══════════ -->
+<div class="legend">
+  <h2>設計方針</h2>
+  <ol>
+    <li><b>台風は新しい部品ではなく「警報チップの仲間」として置く。</b>既存の <code>#warning-chips</code> に入れれば、平常時に増える高さはゼロ。年の大半を占める「台風なし」の日に、画面が一切変わらないことを最優先した。</li>
+    <li><b>落差は色と展開だけで作る。</b>影響なし＝アクセント色のチップ1個。確率が立つ＝チップが既存の赤（<code>.warn-warning</code>・0.78rem）に変わり、真下にカードが開いてコンディションボードを押し下げる。<b>ボードが動くこと自体が異常の合図</b>になり、点滅も新色も要らない。</li>
+    <li><b>載せる数字は「今日の判断」ではなく「今日やるべきこと」を決めるもの。</b>暴風域に入る確率・最接近の日と距離・暴風域の半径に絞った。中心気圧や進行速度は開いたカードの中だけに置き、チップには出さない。</li>
+    <li><b>進路図は描かない。</b>375px・直射日光下・数十秒という条件では、地図は読む時間が要るわりに「係留を今日やるか」に答えない。慶良間・粟国諸島の確率が気象庁から直接取れる以上、距離と確率の文字が最短で正解を出す。</li>
+    <li><b>4状態を必ず出し分ける。</b>取得失敗・更新停止・台風なし・台風ありの流儀は既存チップと揃える。とくに接近中の更新停止は、経過時間を明示して黙って古い情報を見せないようにする。</li>
+  </ol>
+
+  <h2 style="margin-top:1.5rem">継承した既存パターンの一覧</h2>
+  <table>
+    <tr><th>新しい要素</th><th>継承元（本番 css/style.css）</th></tr>
+    <tr><td>台風チップ（なし／取得失敗）</td><td><code>.warn-chip.warn-none</code> / <code>.warn-chip.warn-unavailable</code> をそのまま</td></tr>
+    <tr><td>台風チップ（影響なし）</td><td><code>.tide-best</code> の配色 <code>rgba(0,180,216,0.12)</code> ＋ <code>1px solid var(--accent)</code></td></tr>
+    <tr><td>台風チップ（確率あり）</td><td><code>.warn-chip.warn-warning</code>（0.78rem・<code>#f87171</code>）をそのまま</td></tr>
+    <tr><td>台風カードの器</td><td><code>.condition-card</code>（同じグラデーション・<code>var(--radius)</code> 12px・<code>padding:0.75rem 0.6rem</code>）</td></tr>
+    <tr><td>カード内の各行</td><td><code>.card-row</code> ＋ <code>.label</code> / <code>.value</code>（0.72rem muted ／ 0.82rem 600）</td></tr>
+    <tr><td>左端の3px警戒バー</td><td><code>.dive-point-row.has-warn-warning</code> の <code>border-left:3px solid var(--danger)</code></td></tr>
+    <tr><td>確率の丸ピル</td><td><code>.score-chip</code>（999px・白文字・0.82rem・背景に <code>var(--danger)</code> 等）</td></tr>
+    <tr><td>日別の確率帯</td><td><code>#calendar-grid</code> / <code>.cal-cell</code> / <code>.cal-good</code> / <code>.cal-caution</code> / <code>.cal-bad</code></td></tr>
+    <tr><td>スコア上限の注記</td><td><code>#score-cap-note</code>（0.72rem・<code>#fbbf24</code>）</td></tr>
+    <tr><td>発表時刻の脚注</td><td><code>#data-info</code> / <code>.card-subtitle</code> と同じ 0.6rem muted</td></tr>
+    <tr><td>44pxのタップ判定</td><td><code>.dot</code> / <code>.plabel</code> の「見た目は変えずに当たり判定だけ広げる」手法（本案は擬似要素で確保）</td></tr>
+  </table>
+  <p style="color:var(--muted); font-size:0.78rem">
+    新規に定義したCSSは <code>.warn-tc-info</code> / <code>.typhoon-card</code> / <code>.tc-days</code> 周辺のみ。
+    新しい色・新しい角丸・新しい文字サイズは1つも足していない。
+  </p>
+</div>
+
+</body>
+</html>

@@ -1148,3 +1148,88 @@ body {
 @media (prefers-reduced-motion: reduce) {
   #notice-overlay, #notice-card { animation: none; }
 }
+
+/* ── 台風カード（2026-08-24 追加）──────────────────────────
+   沖縄では台風が年に何度も来る。船の係留・お客様への連絡・避難の
+   タイミングは「波が高い」ではなく「台風がいつどこに来るか」で決まるため、
+   波高経由の間接的な影響だけでなく台風そのものを出す。
+   置き場所は #warning-chips の直下・#score-container の上:
+   台風はスコアが下がる「原因」なので、結果より先に読ませる。
+   部品はできる限り既存のものを流用しとる（.card-row / .cal-cell /
+   .score-chip / .warn-chip）。新規はこのブロックの中だけ。 */
+#typhoon-card:empty { display: none; }   /* 台風がない日は gap ごと消す */
+
+/* 台風「影響なし」のチップ。既存アクセント色の組み合わせで、
+   警報の赤・黄とも「台風なし」の緑とも別物に見えるようにする */
+.warn-tc {
+  background: rgba(0,180,216,0.12);
+  border: 1px solid rgba(0,180,216,0.45);
+  color: var(--accent);
+}
+
+/* カードの器。.condition-card と同じ見た目だが、
+   flex:1 で伸びると困るため別クラスにしとる */
+.tc-card {
+  width: 100%;
+  max-width: 340px;
+  background: rgba(26,39,68,0.7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.6rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: chip-fade-in 0.3s ease both;
+}
+.tc-card.lvl-info   { border-left: 3px solid rgba(0,180,216,0.55); }
+.tc-card.lvl-danger { border-left: 3px solid var(--danger); }
+.tc-card.lvl-stale  { border-left: 3px solid var(--caution); }
+
+.tc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.tc-head .card-subtitle { margin-bottom: 0; }
+
+/* 日別の見通し。#calendar-grid と同じ .cal-cell を使い、列数だけ変える */
+.tc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.25rem;
+  margin: 0.55rem 0 0.1rem;
+}
+.tc-grid .cal-cell.is-today { outline: 1px solid rgba(255,255,255,0.35); outline-offset: 1px; }
+.tc-grid-cap { font-size: 0.6rem; color: var(--muted); margin-top: 0.45rem; line-height: 1.5; }
+
+/* 結論の1行。#score-cap-note と同じ体裁 */
+.tc-note { font-size: 0.72rem; color: #fbbf24; margin-top: 0.4rem; text-align: center; line-height: 1.7; }
+.tc-note.hot { color: #f87171; }
+
+/* 詳細の開閉。HTML標準の details なので JS は要らん */
+.tc-more { margin-top: 0.55rem; border-top: 1px solid var(--border); }
+.tc-more > summary {
+  list-style: none;
+  cursor: pointer;
+  min-height: 44px;              /* タップ標的の下限 */
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 0.78rem; font-weight: 700; color: var(--accent);
+}
+.tc-more > summary::-webkit-details-marker { display: none; }
+.tc-more > summary .arw { font-size: 0.68rem; transition: transform 0.18s; }
+.tc-more[open] > summary .arw { transform: rotate(180deg); }
+.tc-more[open] > summary .lb-c { display: inline; }
+.tc-more > summary .lb-c { display: none; }
+.tc-more[open] > summary .lb-o { display: none; }
+.tc-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+.tc-sec { font-size: 0.66rem; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; margin: 0.6rem 0 0.35rem; }
+.tc-map { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--surface2); }
+.tc-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; font-size: 0.62rem; color: var(--muted); }
+.tc-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 3px; vertical-align: -1px; }
+.tc-legend i.st { background: rgba(239,68,68,0.16); border: 1px solid rgba(239,68,68,0.55); }
+.tc-legend i.pc { background: rgba(148,163,184,0.14); border: 1px dashed rgba(148,163,184,0.7); }
+.tc-legend i.kr { background: var(--accent); border-radius: 2px; }
+.tc-foot { font-size: 0.6rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.6; }
+.tc-src  { font-size: 0.6rem; color: var(--muted); text-align: right; margin-top: 0.4rem; }
+.tc-row-hot .label, .tc-row-hot .value { color: #f87171; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-card { animation: none; }
+  .tc-more > summary .arw { transition: none; }
+}

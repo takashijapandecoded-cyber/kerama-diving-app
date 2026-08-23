@@ -192,30 +192,56 @@ function setCardData(prefix, data) {
 
 // ── 警報・注意報チップ（今日ページ） ────────────────────────
 
-export function renderWarningChips(warnings) {
+// 台風のチップ。警報チップと同じ行に折り返して並ぶので、平常時に増える高さはゼロ。
+// 警報と同じく4状態を出し分ける（取得失敗 / 台風なし / 影響なし / 確率あり）
+function typhoonChips(result) {
+  if (!result) return '';
+  if (result.status === 'unavailable') {
+    return '<span class="warn-chip warn-unavailable">🌀 台風情報を取得できません</span>';
+  }
+  const list = result.typhoons ?? [];
+  if (!list.length) return '<span class="warn-chip warn-none">🌀 台風なし</span>';
+
+  const primary = result.primary;
+  const label = tcShort;
+  if (!primary) {
+    // 全部0% = 今日の判断に効かん。名前を並べず件数にまとめる
+    const head = `<span class="warn-chip warn-tc">🌀 ${label(list[0])} 影響なし</span>`;
+    const rest = list.length > 1
+      ? `<span class="warn-chip warn-tc">ほか${list.length - 1}つ 影響なし</span>` : '';
+    return head + rest;
+  }
+  const pct  = primary.probabilitySummary?.max ?? 0;
+  const rest = list.length > 1
+    ? `<span class="warn-chip warn-tc">ほか${list.length - 1}つ 影響なし</span>` : '';
+  return `<span class="warn-chip warn-warning">🌀 ${label(primary)} 暴風域 ${pct}%</span>${rest}`;
+}
+
+export function renderWarningChips(warnings, typhoonResult = null) {
   const box = document.getElementById('warning-chips');
   if (!box) return;
+  const tc = typhoonChips(typhoonResult);
 
   // 4状態を明示: 取得失敗・更新停止・発表なし・発表あり。
   // 「何も出さない」は取得失敗と平穏の区別がつかんため廃止（2026-07-19 評議会）
   if (!warnings) {
-    box.innerHTML = '<span class="warn-chip warn-unavailable">⚠️ 警報情報を取得できません — 気象庁で確認を</span>';
+    box.innerHTML = '<span class="warn-chip warn-unavailable">⚠️ 警報情報を取得できません — 気象庁で確認を</span>' + tc;
     return;
   }
   if (warnings.stale) {
-    box.innerHTML = '<span class="warn-chip warn-unavailable">⚠️ 警報データが更新停止中 — 気象庁で確認を</span>';
+    box.innerHTML = '<span class="warn-chip warn-unavailable">⚠️ 警報データが更新停止中 — 気象庁で確認を</span>' + tc;
     return;
   }
   const items = warnings.items;
   if (!items.length) {
-    box.innerHTML = '<span class="warn-chip warn-none">✅ 警報・注意報なし</span>';
+    box.innerHTML = '<span class="warn-chip warn-none">✅ 警報・注意報なし</span>' + tc;
     return;
   }
 
   box.innerHTML = items.map(w => {
     const area = w.allAreas ? '' : `<span class="warn-area">・${w.areaLabels.join('・')}</span>`;
     return `<span class="warn-chip warn-${w.level}">${w.emoji} ${w.name}${area}</span>`;
-  }).join('');
+  }).join('') + tc;
 }
 
 // ── ポイント別コンディション（海況ページ） ──────────────────
@@ -536,4 +562,202 @@ export function renderDataInfo(weather) {
     ? new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) + ' JST'
     : '--';
   el.innerHTML = `📡 ${timeStr}時点 | JMA予報 · Marine API · 気象庁警報 · NASA EPIC`;
+}
+
+// ── 台風カード（2026-08-24 追加）────────────────────────────
+// 置き場所は #warning-chips の直下・#score-container の上。
+// 台風はスコアが下がる「原因」なので、結果（スコア）より先に読ませる。
+
+const KERAMA_LL = { lat: 26.20, lon: 127.31 };
+// 発表からこれ以上経っとったら「情報が古い」と明示する
+const TC_STALE_MS = 6 * 60 * 60 * 1000;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// 気象庁の typhoonNumber は「2618」＝2026年の第18号。そのまま出すと「台風2618号」になる。
+// 熱帯低気圧には番号が付かん（'d' などが入る）ので、その場合は階級名だけにする
+function tcTitle(t) {
+  const num = /^\d{4}$/.test(t?.number ?? '') ? Number(String(t.number).slice(2)) : null;
+  const head = num ? `台風${num}号` : (t?.category ?? '熱帯低気圧');
+  return t?.name ? `${head} ${t.name}` : head;
+}
+function tcShort(t) {
+  const num = /^\d{4}$/.test(t?.number ?? '') ? Number(String(t.number).slice(2)) : null;
+  return num ? `台風${num}号` : (t?.category ?? '熱帯低気圧');
+}
+
+function tcDayLabel(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00+09:00');
+  return d.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' });
+}
+
+// 確率に応じた既存カレンダーのクラス（緑・黄・赤・判定不能）
+function tcCellClass(pct) {
+  if (pct == null) return 'cal-na';
+  if (pct >= 50) return 'cal-bad';
+  if (pct > 0)   return 'cal-caution';
+  return 'cal-good';
+}
+function tcPctColor(pct) {
+  if (pct == null) return 'var(--muted)';
+  if (pct >= 50) return '#f87171';
+  if (pct > 0)   return 'var(--caution)';
+  return 'var(--go)';
+}
+
+// 予報進路の図を組み立てる。
+// 緯度経度をそのまま置き、距離の縦横比を合わせるので、円の大きさは実際の半径どおりになる。
+// 固定値を焼き込まず毎回計算するのは、台風ごとに位置も半径も変わるため。
+function buildTyphoonMap(typhoon) {
+  const blocks = [typhoon.analysis, ...typhoon.forecasts].filter(Boolean);
+  if (blocks.length < 2) return '';
+
+  const KM_PER_DEG_LAT = 111.13;
+  const kmPerDegLon = 111.32 * Math.cos(KERAMA_LL.lat * Math.PI / 180);
+
+  // 円がはみ出さんよう、半径ぶん余裕を持たせて範囲を決める。
+  // 暴風域と予報円の大きい方で測る（終盤は暴風域が消えて予報円だけが大きくなる）
+  const lons = [KERAMA_LL.lon], lats = [KERAMA_LL.lat];
+  for (const b of blocks) {
+    const rKm = Math.max(b.stormRadiusKm ?? 0, b.probabilityCircleKm ?? 0, 0);
+    lons.push(b.lon - rKm / kmPerDegLon, b.lon + rKm / kmPerDegLon);
+    lats.push(b.lat - rKm / KM_PER_DEG_LAT, b.lat + rKm / KM_PER_DEG_LAT);
+  }
+  const lonMin = Math.min(...lons), lonMax = Math.max(...lons);
+  const latMin = Math.min(...lats), latMax = Math.max(...lats);
+
+  const W = 320, PAD = 14;
+  const sx = (W - PAD * 2) / Math.max(lonMax - lonMin, 0.01);        // px / 度(経度)
+  const sy = sx * (KM_PER_DEG_LAT / kmPerDegLon);                     // 距離として正しい縦横比
+  const H = Math.round((latMax - latMin) * sy + PAD * 2);
+  const px = lon => PAD + (lon - lonMin) * sx;
+  const py = lat => PAD + (latMax - lat) * sy;
+  const pxPerKm = sx / kmPerDegLon;
+
+  const storm = blocks
+    .filter(b => b.stormRadiusKm)
+    .map(b => `<circle cx="${px(b.lon).toFixed(1)}" cy="${py(b.lat).toFixed(1)}" r="${(b.stormRadiusKm * pxPerKm).toFixed(1)}"/>`)
+    .join('');
+  // 予報円＝予報位置のばらつき。描かんと進路が確定しとるように見える
+  const probCircle = blocks
+    .filter(b => b.probabilityCircleKm)
+    .map(b => `<circle cx="${px(b.lon).toFixed(1)}" cy="${py(b.lat).toFixed(1)}" r="${(b.probabilityCircleKm * pxPerKm).toFixed(1)}"/>`)
+    .join('');
+  const line = blocks.map(b => `${px(b.lon).toFixed(1)},${py(b.lat).toFixed(1)}`).join(' ');
+  const dots = blocks
+    .map(b => `<circle cx="${px(b.lon).toFixed(1)}" cy="${py(b.lat).toFixed(1)}" r="${b.isAnalysis ? 4 : 3.4}"/>`)
+    .join('');
+
+  const kx = px(KERAMA_LL.lon), ky = py(KERAMA_LL.lat);
+
+  return `
+    <svg class="tc-map" viewBox="0 0 ${W} ${H}" role="img"
+         aria-label="${esc(typhoon.name ?? '台風')}の予報進路。円は暴風域、破線の円は予報位置のばらつき、×印が慶良間諸島。">
+      <g fill="none" stroke="rgba(148,163,184,0.7)" stroke-width="1" stroke-dasharray="3 3">${probCircle}</g>
+      <g fill="rgba(239,68,68,0.16)" stroke="rgba(239,68,68,0.55)" stroke-width="1.1">${storm}</g>
+      <polyline points="${line}" fill="none" stroke="#e2e8f0" stroke-width="1.8" stroke-dasharray="6 5" opacity=".85"/>
+      <g fill="#ef4444">${dots}</g>
+      <g stroke="#00b4d8" stroke-width="2.6" stroke-linecap="round">
+        <line x1="${(kx - 5).toFixed(1)}" y1="${(ky - 5).toFixed(1)}" x2="${(kx + 5).toFixed(1)}" y2="${(ky + 5).toFixed(1)}"/>
+        <line x1="${(kx + 5).toFixed(1)}" y1="${(ky - 5).toFixed(1)}" x2="${(kx - 5).toFixed(1)}" y2="${(ky + 5).toFixed(1)}"/>
+      </g>
+      <text x="${kx.toFixed(1)}" y="${(ky + 18).toFixed(1)}" fill="#00b4d8" font-size="11.5" font-weight="700" text-anchor="middle">慶良間</text>
+    </svg>`;
+}
+
+function buildTyphoonDetail(typhoon) {
+  const a = typhoon.analysis;
+  const rows = [];
+  if (a?.stormRadiusKm) rows.push(['暴風域', `半径 ${a.stormRadiusKm}km`]);
+  if (a?.pressure)      rows.push(['中心気圧', `${a.pressure} hPa`]);
+  if (a?.course)        rows.push(['進行', `${esc(a.course)}へ`]);
+
+  const track = [typhoon.analysis, ...typhoon.forecasts].filter(Boolean).map(b => {
+    const t = b.validTime ? new Date(b.validTime).toLocaleString('ja-JP',
+      { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit' }) : '--';
+    const hot = b.insideStorm === true;
+    return `<div class="card-row${hot ? ' tc-row-hot' : ''}">
+      <span class="label">${esc(t)}${hot ? ' 内側' : ''}</span>
+      <span class="value">${b.distanceKm}km${b.windMs != null ? ` ／ ${b.windMs}m/s` : ''}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <details class="tc-more">
+      <summary><span class="lb-o">進路と接近の推移を見る</span><span class="lb-c">閉じる</span><span class="arw">▾</span></summary>
+      ${rows.length ? `<div class="tc-sec">いまの台風</div>${rows.map(([k, v]) =>
+        `<div class="card-row"><span class="label">${esc(k)}</span><span class="value">${esc(v)}</span></div>`).join('')}` : ''}
+      <div class="tc-sec">どこから来るか</div>
+      ${buildTyphoonMap(typhoon)}
+      <div class="tc-legend">
+        <span><i class="st"></i>暴風域</span>
+        <span><i class="pc"></i>予報円（位置のばらつき）</span>
+        <span><i class="kr"></i>慶良間</span>
+      </div>
+      <div class="tc-foot">緯度・経度をそのまま置いた図。距離の縦横比を合わせてあるので、円の大きさは実際の半径どおり。</div>
+      <div class="tc-sec">どれくらいで来るか</div>
+      ${track}
+      <div class="tc-foot">「内側」は、その時刻に慶良間が暴風域の半径の内側に入る見込みであることを示す。</div>
+    </details>`;
+}
+
+// typhoons: fetchTyphoons() の戻り値 / outlook: dailyOutlook() の戻り値
+export function renderTyphoon(result, outlook) {
+  const box = document.getElementById('typhoon-card');
+  if (!box) return;
+
+  const typhoon = result?.primary;
+  if (!typhoon) { box.innerHTML = ''; return; }
+
+  const issued = typhoon.issued ? new Date(typhoon.issued) : null;
+  const stale = issued ? Date.now() - issued.getTime() > TC_STALE_MS : false;
+
+  const cells = (outlook ?? []).map(d => `
+    <div class="cal-cell ${tcCellClass(d.percent)}${d.isToday ? ' is-today' : ''}">
+      <div class="cal-day">${d.isToday ? '今日' : ''} ${esc(d.weekday)}</div>
+      <div class="cal-num">${d.dayNum}</div>
+      <div class="cal-score" style="color:${tcPctColor(d.percent)}">${d.percent == null ? '—' : d.percent + '%'}</div>
+      <div class="cal-icon">${d.waveMax == null ? '波 —' : '波 ' + d.waveMax.toFixed(1) + 'm'}</div>
+    </div>`).join('');
+
+  // 50%を最初に超える日 ＝ 段取りを決める日
+  const hit = (outlook ?? []).find(d => d.percent != null && d.percent >= 50);
+  const maxPct = typhoon.probabilitySummary?.max ?? 0;
+  const nearest = [typhoon.analysis, ...typhoon.forecasts]
+    .filter(Boolean).reduce((m, b) => (m == null || b.distanceKm < m.distanceKm ? b : m), null);
+
+  const lead = hit
+    ? `${tcDayLabel(hit.date)}までに暴風域に入る確率 ${hit.percent}%`
+    : `4日先までに暴風域に入る確率 最大 ${maxPct}%`;
+  const nearestLine = nearest && !nearest.isAnalysis
+    ? `<br>最も近づくのは ${esc(new Date(nearest.validTime).toLocaleString('ja-JP',
+        { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }))}・${nearest.distanceKm}km`
+    : '';
+
+  const a = typhoon.analysis;
+  const sub = [
+    a ? `慶良間まで ${a.distanceKm}km` : null,
+    a?.course ? `${esc(a.course)}へ` : null,
+    a?.windMs != null ? `最大風速 ${a.windMs}m/s` : null,
+  ].filter(Boolean).join(' ／ ');
+
+  box.innerHTML = `
+    <div class="tc-card ${stale ? 'lvl-stale' : 'lvl-danger'}">
+      <div class="tc-head">
+        <div>
+          <div class="card-title">🌀 ${esc(tcTitle(typhoon))}</div>
+          <div class="card-subtitle">${sub}</div>
+        </div>
+        <span class="score-chip" style="background:${maxPct >= 50 ? 'var(--danger)' : 'var(--caution)'}">${maxPct}%</span>
+      </div>
+      <div class="tc-grid">${cells}</div>
+      <div class="tc-grid-cap">上段＝その日までに暴風域に入る確率（慶良間・粟国諸島）／ 下段＝慶良間沖の最大波高</div>
+      <div class="tc-note ${maxPct >= 50 ? 'hot' : ''}">${lead}${nearestLine}</div>
+      ${buildTyphoonDetail(typhoon)}
+      ${stale ? '<div class="tc-note">⚠️ 気象庁の発表から時間が経っています。最新は気象庁でご確認ください。</div>' : ''}
+      <div class="tc-src">気象庁 ${issued ? esc(issued.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : '--'} 発表</div>
+    </div>`;
 }

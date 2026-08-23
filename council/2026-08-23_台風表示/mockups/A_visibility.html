@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案A 視認性最優先 ─ 台風表示モックアップ</title>
+<style>
+:root{
+  --bg:#0a1628; --surface:#1a2744; --surface2:#243358; --accent:#00b4d8;
+  --text:#e2e8f0; --muted:#94a3b8; --border:rgba(148,163,184,0.15);
+  --go:#22c55e; --caution:#f59e0b; --danger:#ef4444; --radius:12px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  line-height:1.7;
+}
+
+/* ===== シート（この検討用ページ自体）の枠 ===== */
+.sheet{max-width:1360px;margin:0 auto;padding:40px 24px 80px;}
+.sheet h1{font-size:26px;margin:0 0 4px;letter-spacing:.01em;}
+.sheet .sub{color:var(--muted);font-size:14px;margin:0 0 28px;}
+.sheet h2{font-size:18px;margin:48px 0 12px;padding-top:24px;border-top:1px solid var(--border);}
+.lead{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:18px 20px;font-size:14.5px;max-width:860px;}
+.lead p{margin:0 0 10px;}
+.lead p:last-child{margin:0;}
+.lead strong{color:#fff;}
+
+/* 3段階ルールの図 */
+.rule{display:flex;flex-wrap:wrap;gap:12px;max-width:860px;margin-top:16px;}
+.rule-item{flex:1 1 240px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px 16px;}
+.rule-item .lvl{font-size:12px;color:var(--muted);letter-spacing:.08em;}
+.rule-item .cond{font-size:15px;font-weight:700;margin:2px 0 6px;}
+.rule-item .desc{font-size:13px;color:var(--muted);line-height:1.6;}
+.rule-item.l1{border-left:4px solid var(--muted);}
+.rule-item.l2{border-left:4px solid var(--caution);}
+.rule-item.l3{border-left:4px solid var(--danger);}
+
+/* モック並べ */
+.frames{display:flex;flex-wrap:wrap;gap:36px;margin-top:24px;align-items:flex-start;}
+.frame-wrap{width:375px;flex:0 0 375px;}
+.frame-title{font-size:15px;font-weight:700;margin:0 0 10px;}
+.frame-title .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+  padding:2px 8px;border-radius:999px;margin-right:8px;vertical-align:2px;}
+.tag-a{background:var(--surface2);color:var(--muted);}
+.tag-b{background:var(--surface2);color:var(--accent);}
+.tag-c1{background:rgba(245,158,11,.18);color:var(--caution);}
+.tag-c2{background:rgba(239,68,68,.2);color:var(--danger);}
+.tag-d{background:rgba(245,158,11,.18);color:var(--caution);}
+
+/* 375px 実寸の端末 */
+.phone{
+  width:375px;background:var(--bg);border:1px solid var(--border);
+  border-radius:16px;overflow:hidden;position:relative;
+}
+.phone::before{ /* 衛星写真が薄く敷かれている想定（外部画像は使わない） */
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(130% 80% at 78% 8%, rgba(0,180,216,.10) 0%, rgba(10,22,40,0) 62%);
+}
+.phone > *{position:relative;}
+
+.note{font-size:13.5px;color:var(--muted);margin:14px 0 0;line-height:1.75;}
+.note b{color:var(--text);font-weight:700;}
+
+/* ===== ここから「アプリ内」の再現 ===== */
+.gonogo{height:3rem;display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:700;letter-spacing:.02em;}
+.gonogo.go{background:rgba(34,197,94,.16);color:var(--go);border-bottom:1px solid rgba(34,197,94,.35);}
+.gonogo.cau{background:rgba(245,158,11,.16);color:var(--caution);border-bottom:1px solid rgba(245,158,11,.35);}
+.gonogo.dan{background:rgba(239,68,68,.18);color:var(--danger);border-bottom:1px solid rgba(239,68,68,.4);}
+
+.dots{display:flex;justify-content:center;gap:7px;padding:10px 0 4px;}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--surface2);display:block;}
+.dots i.on{background:var(--accent);}
+.plabels{display:flex;justify-content:center;gap:16px;font-size:12px;color:var(--muted);padding-bottom:8px;}
+.plabels span.on{color:var(--text);font-weight:700;}
+
+.hero-loc{text-align:center;font-size:17px;font-weight:700;padding:2px 16px 0;}
+.hero-date{text-align:center;font-size:13px;color:var(--muted);padding:2px 16px 10px;}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 14px;}
+.warn-chip{font-size:13px;font-weight:700;padding:7px 11px;border-radius:999px;
+  border:1px solid var(--border);background:var(--surface2);color:var(--text);white-space:nowrap;}
+.warn-none{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.4);color:var(--go);}
+.warn-advisory{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.45);color:var(--caution);}
+.warn-warning{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.5);color:var(--danger);}
+.tc-chip{background:rgba(0,180,216,.12);border-color:rgba(0,180,216,.45);color:#7fdcf0;}
+.tc-chip-none{background:var(--surface2);border-color:var(--border);color:var(--muted);}
+.tc-chip-fail{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.5);color:var(--caution);}
+
+/* スコアボード（既存の再現・簡略） */
+.board{margin:0 16px 16px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:18px 16px;text-align:center;}
+.score-circle{width:132px;height:132px;border-radius:50%;margin:0 auto 10px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border:9px solid var(--go);}
+.score-circle.cau{border-color:var(--caution);}
+.score-circle.dan{border-color:var(--danger);}
+.score-num{font-size:52px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;}
+.score-cap{font-size:11px;color:var(--muted);letter-spacing:.1em;margin-top:4px;}
+.score-word{font-size:16px;font-weight:700;margin-bottom:12px;}
+.score-word.go{color:var(--go);} .score-word.cau{color:var(--caution);} .score-word.dan{color:var(--danger);}
+.brk{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;border-top:1px solid var(--border);padding-top:12px;}
+.brk div{font-size:12px;color:var(--muted);}
+.brk div b{display:block;font-size:15px;color:var(--text);font-weight:700;font-variant-numeric:tabular-nums;}
+.spot{margin:0 16px 12px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;}
+.spot .nm{font-size:14px;font-weight:700;}
+.spot .vl{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.tail{padding:0 16px 18px;font-size:11px;color:var(--muted);line-height:1.6;}
+
+/* ===== 案A の本体：台風スロット ===== */
+
+/* レベル2：1行ストリップ */
+.tc-strip{
+  display:flex;align-items:center;gap:12px;
+  margin:0 0 12px;padding:12px 16px;min-height:56px;
+  background:var(--surface2);
+  border-top:1px solid var(--border);
+  border-bottom:3px solid var(--caution);
+}
+.tc-strip .ic{font-size:22px;line-height:1;}
+.tc-strip .tx{flex:1;min-width:0;}
+.tc-strip .t1{font-size:15px;font-weight:700;letter-spacing:.01em;}
+.tc-strip .t2{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.tc-strip .pct{font-size:30px;font-weight:800;color:var(--caution);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+.tc-strip .pct small{font-size:15px;font-weight:700;}
+
+/* レベル3：スラブ（直射日光でも読める塗り面） */
+.tc-slab{
+  background:var(--danger);
+  color:#0a1628;
+  padding:18px 16px 14px;
+}
+.tc-slab .kicker{
+  font-size:14px;font-weight:800;letter-spacing:.04em;
+  display:flex;align-items:center;gap:6px;
+}
+.tc-slab .big{
+  display:flex;align-items:baseline;gap:8px;margin:2px 0 -2px;
+}
+.tc-slab .big .n{
+  font-size:84px;font-weight:800;line-height:.95;letter-spacing:-.045em;
+  font-variant-numeric:tabular-nums;
+}
+.tc-slab .big .u{font-size:34px;font-weight:800;letter-spacing:-.02em;}
+.tc-slab .when{font-size:17px;font-weight:800;line-height:1.45;}
+.tc-slab .facts{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;
+  margin-top:14px;background:rgba(10,22,40,.28);border-radius:8px;overflow:hidden;
+}
+.tc-slab .facts div{
+  background:var(--danger);padding:9px 6px;text-align:center;
+}
+.tc-slab .facts span{display:block;font-size:11px;font-weight:700;opacity:.8;letter-spacing:.02em;}
+.tc-slab .facts b{display:block;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.25;}
+.tc-slab .src{margin-top:10px;font-size:11.5px;font-weight:700;opacity:.78;}
+.tc-slab .more{
+  margin-top:10px;min-height:44px;display:flex;align-items:center;justify-content:center;
+  border:2px solid rgba(10,22,40,.55);border-radius:8px;
+  font-size:14px;font-weight:800;letter-spacing:.02em;
+}
+
+.closing{max-width:860px;background:var(--surface);border:1px solid var(--border);
+  border-left:4px solid var(--accent);border-radius:var(--radius);padding:20px 22px;font-size:15px;}
+.closing ol{margin:0;padding-left:1.2em;}
+.closing li{margin-bottom:8px;}
+.closing li:last-child{margin-bottom:0;}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <h1>案A ─ 視認性最優先</h1>
+  <p class="sub">慶良間ダイビングアプリ／PAGE 0「今日」への台風表示 ・ 2026-08-23</p>
+
+  <div class="lead">
+    <p><strong>前提にした状況：</strong>直射日光の下、船の準備をしながら片手で数秒だけ見る。
+    このとき「他を全部見落としても、これだけは目に入る」ものを1つに絞る。</p>
+    <p><strong>結論：</strong>台風の表示スロットは画面の1か所（ページ切替ラベルの直下・コンディションボードの上）に固定し、
+    <strong>慶良間が暴風域に入る確率だけで大きさを3段階に切り替える。</strong>
+    情報の種類ではなく、決断への近さで面積を配る。</p>
+    <p>確率0%の台風は、どれだけ大きくても判断を変えない。だからチップ1つで足りる。
+    確率96%は、その日の全項目より先に読まれるべき事実なので、面で塗る。</p>
+  </div>
+
+  <div class="rule">
+    <div class="rule-item l1">
+      <div class="lvl">LEVEL 1</div>
+      <div class="cond">台風なし ／ 確率 0%</div>
+      <div class="desc">既存の警報チップの行に1つ足すだけ。新しい縦位置を作らない（制約6）。</div>
+    </div>
+    <div class="rule-item l2">
+      <div class="lvl">LEVEL 2</div>
+      <div class="cond">確率 1〜49%</div>
+      <div class="desc">上部スロットに横1本のストリップ（約80px）。確率・距離だけ。</div>
+    </div>
+    <div class="rule-item l3">
+      <div class="lvl">LEVEL 3</div>
+      <div class="cond">確率 50%以上</div>
+      <div class="desc">上部スロットを塗りつぶすスラブ。数字は84px。要素は3つまで。</div>
+    </div>
+  </div>
+
+  <h2>モックアップ（375px 実寸）</h2>
+
+  <div class="frames">
+
+    <!-- ============ 状態A ============ -->
+    <div class="frame-wrap">
+      <p class="frame-title"><span class="tag tag-a">状態A</span>台風なし（年の大半）</p>
+      <div class="phone">
+        <div class="gonogo go">✅ 出港OK（要現地確認）</div>
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="plabels"><span class="on">今日</span><span>週間</span><span>潮汐</span><span>ポイント</span></div>
+        <div class="hero-loc">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年6月14日(日)</div>
+        <div class="chips">
+          <span class="warn-chip warn-none">✅ 警報・注意報なし</span>
+          <span class="warn-chip tc-chip-none">🌀 台風なし</span>
+        </div>
+        <div class="board">
+          <div class="score-circle"><div class="score-num">8</div><div class="score-cap">SCORE</div></div>
+          <div class="score-word go">良好</div>
+          <div class="brk">
+            <div>波<b>0.8m</b></div><div>風<b>4m/s</b></div><div>うねり<b>0.6m</b></div>
+            <div>視界<b>良</b></div><div>潮<b>中潮</b></div>
+          </div>
+        </div>
+        <div class="spot"><span class="nm">那覇港沖</span><span class="vl">波 0.7m ／ 風 北東 4m/s</span></div>
+        <div class="spot"><span class="nm">航路中間</span><span class="vl">波 0.9m ／ 風 北東 5m/s</span></div>
+        <div class="spot"><span class="nm">慶良間沖</span><span class="vl">波 0.8m ／ 風 北東 4m/s</span></div>
+        <div class="tail">データ更新 6:00 JST ／ 出典 気象庁・Open-Meteo<br>最終判断は現地の状況で行ってください。</div>
+      </div>
+      <p class="note">
+        台風用の場所を<b>1pxも作らない</b>。既存の警報チップの行に「🌀 台風なし」を並べるだけ。
+        既存の流儀（「何も出さない」は禁止・4状態を出し分ける）にそのまま乗るので、
+        <b>取得できていないのか平穏なのかが常に区別できる。</b>
+        年の大半はこの姿で、画面は今と一切変わらない。
+      </p>
+    </div>
+
+    <!-- ============ 状態B ============ -->
+    <div class="frame-wrap">
+      <p class="frame-title"><span class="tag tag-b">状態B</span>台風はあるが遠い（8/23・1301km・0%）</p>
+      <div class="phone">
+        <div class="gonogo go">✅ 出港OK（要現地確認）</div>
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="plabels"><span class="on">今日</span><span>週間</span><span>潮汐</span><span>ポイント</span></div>
+        <div class="hero-loc">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月23日(日)</div>
+        <div class="chips">
+          <span class="warn-chip warn-none">✅ 警報・注意報なし</span>
+          <span class="warn-chip tc-chip">🌀 台風18号 1301km・暴風域 0%</span>
+          <span class="warn-chip tc-chip-none">他3つも0%</span>
+        </div>
+        <div class="board">
+          <div class="score-circle"><div class="score-num">6</div><div class="score-cap">SCORE</div></div>
+          <div class="score-word go">おおむね良好</div>
+          <div class="brk">
+            <div>波<b>1.4m</b></div><div>風<b>6m/s</b></div><div>うねり<b>1.2m</b></div>
+            <div>視界<b>良</b></div><div>潮<b>中潮</b></div>
+          </div>
+        </div>
+        <div class="spot"><span class="nm">那覇港沖</span><span class="vl">波 1.2m ／ 風 南東 6m/s</span></div>
+        <div class="spot"><span class="nm">航路中間</span><span class="vl">波 1.5m ／ 風 南東 7m/s</span></div>
+        <div class="spot"><span class="nm">慶良間沖</span><span class="vl">波 1.4m ／ 風 南東 6m/s</span></div>
+        <div class="tail">データ更新 6:00 JST ／ 出典 気象庁・Open-Meteo<br>最終判断は現地の状況で行ってください。</div>
+      </div>
+      <p class="note">
+        <b>存在は伝えるが、面積は与えない。</b>確率0%の台風は今日の判断を1ミリも変えないため、
+        チップのままにする。ここで進路図や気圧を出すと、本当に大きくすべき日との差がなくなる。
+        <b>同時に複数あるのが普通</b>なので、慶良間への確率が最大の1つだけ名前を出し、
+        残りは件数にまとめる。見落としではないことを示すため、どちらにも0%を明記する。
+      </p>
+    </div>
+
+    <!-- ============ 状態C' ============ -->
+    <div class="frame-wrap">
+      <p class="frame-title"><span class="tag tag-c1">状態C′</span>近づいている段階（8/25時点・36%）</p>
+      <div class="phone">
+        <div class="gonogo cau">⚠️ 出港は要判断</div>
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="plabels"><span class="on">今日</span><span>週間</span><span>潮汐</span><span>ポイント</span></div>
+        <div class="hero-loc">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月25日(火)</div>
+
+        <div class="tc-strip">
+          <div class="ic">🌀</div>
+          <div class="tx">
+            <div class="t1">台風18号 ソウデル</div>
+            <div class="t2">暴風域に入る確率 ／ 慶良間まで 179km</div>
+          </div>
+          <div class="pct">36<small>%</small></div>
+        </div>
+
+        <div class="chips">
+          <span class="warn-chip warn-advisory">⚡ 波浪注意報・慶良間</span>
+        </div>
+        <div class="board">
+          <div class="score-circle cau"><div class="score-num">1</div><div class="score-cap">SCORE</div></div>
+          <div class="score-word cau">条件不良</div>
+          <div class="brk">
+            <div>波<b>5.0m</b></div><div>風<b>14m/s</b></div><div>うねり<b>4.2m</b></div>
+            <div>視界<b>不良</b></div><div>潮<b>大潮</b></div>
+          </div>
+        </div>
+        <div class="spot"><span class="nm">那覇港沖</span><span class="vl">波 3.8m ／ 風 北 13m/s</span></div>
+        <div class="spot"><span class="nm">航路中間</span><span class="vl">波 4.6m ／ 風 北 14m/s</span></div>
+        <div class="spot"><span class="nm">慶良間沖</span><span class="vl">波 5.0m ／ 風 北 15m/s</span></div>
+        <div class="tail">データ更新 6:00 JST ／ 出典 気象庁・Open-Meteo<br>最終判断は現地の状況で行ってください。</div>
+      </div>
+      <p class="note">
+        LEVEL 2。<b>スコアボードより上に出るが、高さは約80pxの帯1本</b>。
+        確率が2桁になった時点で「チップの中の1項目」から「独立した行」へ格上げする。
+        置き場所はLEVEL 3と同じスロットなので、日をまたいで見たときに
+        <b>同じ場所が育っていく</b>ように見える。数字は右端に固定して、視線が毎日同じ位置に落ちるようにした。
+      </p>
+    </div>
+
+    <!-- ============ 状態C ============ -->
+    <div class="frame-wrap">
+      <p class="frame-title"><span class="tag tag-c2">状態C</span>暴風域が確定的（8/26・196km・96%・波8.5m）</p>
+      <div class="phone">
+        <div class="gonogo dan">⛔ 出港中止</div>
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="plabels"><span class="on">今日</span><span>週間</span><span>潮汐</span><span>ポイント</span></div>
+
+        <div class="tc-slab">
+          <div class="kicker">🌀 台風18号 ソウデル</div>
+          <div class="big"><div class="n">96</div><div class="u">%</div></div>
+          <div class="when">今日 8/26(水) 慶良間が<br>暴風域に入る確率</div>
+          <div class="facts">
+            <div><span>慶良間まで</span><b>196km</b></div>
+            <div><span>最大風速</span><b>40m/s</b></div>
+            <div><span>慶良間沖の波</span><b>8.5m</b></div>
+          </div>
+          <div class="src">気象庁 8/26 5:00 発表 ／ 中心気圧 965hPa ・ 北西へ 20km/h</div>
+          <div class="more">進路と今後5日を見る</div>
+        </div>
+
+        <div class="hero-loc">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月26日(水)</div>
+        <div class="chips">
+          <span class="warn-chip warn-warning">🌀 暴風警報・慶良間</span>
+          <span class="warn-chip warn-warning">🌊 波浪警報・慶良間</span>
+        </div>
+        <div class="board">
+          <div class="score-circle dan"><div class="score-num">1</div><div class="score-cap">SCORE</div></div>
+          <div class="score-word dan">運航不可</div>
+          <div class="brk">
+            <div>波<b>8.5m</b></div><div>風<b>28m/s</b></div><div>うねり<b>7.4m</b></div>
+            <div>視界<b>不良</b></div><div>潮<b>大潮</b></div>
+          </div>
+        </div>
+        <div class="spot"><span class="nm">那覇港沖</span><span class="vl">波 6.9m ／ 風 北 26m/s</span></div>
+        <div class="spot"><span class="nm">航路中間</span><span class="vl">波 8.0m ／ 風 北 27m/s</span></div>
+        <div class="spot"><span class="nm">慶良間沖</span><span class="vl">波 8.5m ／ 風 北 28m/s</span></div>
+        <div class="tail">データ更新 6:00 JST ／ 出典 気象庁・Open-Meteo<br>最終判断は現地の状況で行ってください。</div>
+      </div>
+      <p class="note">
+        LEVEL 3。<b>ヒーロー見出しと日付より上へ出す。</b>ここだけは順番を入れ替える。
+        今日の画面が荒れている理由そのものなので、先に読まれないと意味がない。
+        <b>塗り面＋84pxの数字</b>は、日光でコントラストが潰れても形として残る。
+        文言は事実だけ（「危険」「至急」の類は入れない）。
+        補助情報は3つに絞り、進路図・120時間先はタップの奥（44px以上のボタン）へ送る。
+        <b>チップ行は残す</b>ので、警報そのものは従来どおり別に読める。
+      </p>
+    </div>
+
+    <!-- ============ 状態D ============ -->
+    <div class="frame-wrap">
+      <p class="frame-title"><span class="tag tag-d">状態D</span>取得失敗 ／ 更新停止</p>
+      <div class="phone">
+        <div class="gonogo cau">⚠️ 出港は要判断</div>
+        <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="plabels"><span class="on">今日</span><span>週間</span><span>潮汐</span><span>ポイント</span></div>
+        <div class="hero-loc">🤿 慶良間諸島 ダイビングコンディション</div>
+        <div class="hero-date">2026年8月23日(日)</div>
+        <div class="chips">
+          <span class="warn-chip warn-none">✅ 警報・注意報なし</span>
+          <span class="warn-chip tc-chip-fail">🌀 台風情報を取得できず</span>
+        </div>
+        <div class="board">
+          <div class="score-circle cau"><div class="score-num">6</div><div class="score-cap">SCORE</div></div>
+          <div class="score-word cau">おおむね良好</div>
+          <div class="brk">
+            <div>波<b>1.4m</b></div><div>風<b>6m/s</b></div><div>うねり<b>1.2m</b></div>
+            <div>視界<b>良</b></div><div>潮<b>中潮</b></div>
+          </div>
+        </div>
+        <div class="spot"><span class="nm">那覇港沖</span><span class="vl">波 1.2m ／ 風 南東 6m/s</span></div>
+        <div class="spot"><span class="nm">航路中間</span><span class="vl">波 1.5m ／ 風 南東 7m/s</span></div>
+        <div class="spot"><span class="nm">慶良間沖</span><span class="vl">波 1.4m ／ 風 南東 6m/s</span></div>
+        <div class="tail">データ更新 6:00 JST ／ 出典 気象庁・Open-Meteo<br>最終判断は現地の状況で行ってください。</div>
+      </div>
+      <p class="note">
+        <b>「台風なし」と同じ見た目にしない。</b>取得失敗は黄（--caution）、平穏は灰。
+        直近の値が残っていれば「🌀 台風18号（8/25 21時の情報）」のように
+        <b>いつ時点の情報かを必ず添える</b>。データが古いまま大きく出すほうが危ないので、
+        更新停止時はLEVEL 3へ昇格させず、LEVEL 2で止める。
+      </p>
+    </div>
+
+  </div>
+
+  <h2>設計方針</h2>
+  <div class="closing">
+    <ol>
+      <li><b>面積は「情報量」ではなく「決断への近さ」で配る。</b>慶良間・粟国諸島が暴風域に入る確率(471013)ひとつを唯一の物差しにし、0% / 1〜49% / 50%以上でチップ・1行・スラブへ切り替える。</li>
+      <li><b>スロットは常に1か所。</b>ページラベルの直下・コンディションボードの上に固定する。毎朝同じ位置を見る習慣が作れるうえ、台風がない日は要素ごと消えるので場所を占有しない。</li>
+      <li><b>LEVEL 3だけは見出しより上に出す。</b>その日の画面が荒れている理由なので、結果（スコア）より先に原因が読まれる順序にする。</li>
+      <li><b>大きくするのは数字と塗り面だけで、言葉は増やさない。</b>確率・距離・風速・波高の4つで止め、進路図と5日先はタップの奥へ。強い色は使うが、断定・警告の語は使わない。</li>
+      <li><b>「出ていない」を必ず区別する。</b>台風なし＝灰、取得失敗＝黄、情報が古いときは時刻を添えてLEVEL 2で頭打ちにする。</li>
+    </ol>
+  </div>
+
+</div>
+</body>
+</html>

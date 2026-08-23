@@ -1,5 +1,6 @@
 import { LOCATIONS, DIVE_POINTS, NASA_API_KEY } from './config.js';
 import { fetchWarningsViaXml } from './warnings.js';
+import { fetchTyphoons as fetchTyphoonsRaw } from './typhoon.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5分キャッシュ
 
@@ -164,9 +165,20 @@ export async function fetchWarnings() {
   return data;
 }
 
-// 3地点＋天気＋EPIC＋ダイビングポイント＋警報を並列取得
+// 気象庁: 台風情報（一覧＋個別＋暴風域に入る確率）
+// fetchTyphoonsRaw は失敗しても throw せず { status:'unavailable' } を返すので、
+// 「台風なし」と「取得できとらん」が画面で区別できる
+export async function fetchTyphoonInfo() {
+  const cached = fromCache('typhoon');
+  if (cached) return cached;
+  const data = await fetchTyphoonsRaw();
+  toCache('typhoon', data);
+  return data;
+}
+
+// 3地点＋天気＋EPIC＋ダイビングポイント＋警報＋台風を並列取得
 export async function fetchAll() {
-  const [epicResult, weatherResult, nahaResult, routeResult, keramaResult, divePointsResult, warningsResult] =
+  const [epicResult, weatherResult, nahaResult, routeResult, keramaResult, divePointsResult, warningsResult, typhoonResult] =
     await Promise.allSettled([
       fetchEpicImage(),
       fetchWeather(),
@@ -175,6 +187,7 @@ export async function fetchAll() {
       fetchMarine('kerama'),
       fetchDivePoints(),
       fetchWarnings(),
+      fetchTyphoonInfo(),
     ]);
 
   return {
@@ -185,5 +198,7 @@ export async function fetchAll() {
     kerama:     keramaResult.status     === 'fulfilled' ? keramaResult.value     : null,
     divePoints: divePointsResult.status === 'fulfilled' ? divePointsResult.value : null,
     warnings:   warningsResult.status   === 'fulfilled' ? warningsResult.value   : null,
+    // 取得そのものが失敗した場合も「台風なし」に見せんよう unavailable に倒す
+    typhoons:   typhoonResult.status    === 'fulfilled' ? typhoonResult.value    : { status: 'unavailable', typhoons: [] },
   };
 }
