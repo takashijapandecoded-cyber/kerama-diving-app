@@ -31,8 +31,13 @@ jobs:
 
       # 毎朝ここで走らせる意味: 気象庁側で市町村コードや配信書式が変わった場合、
       # コードを一切触っとらんくても壊れる。その日の実データに対して毎朝検証する。
-      # 落ちたときはメールを送らずにジョブを失敗させる（誤った案内を送るより届かん方が安全）
+      #
+      # ここで即失敗させるとメールが1通も届かず、優くんには理由も伝わらん（ただの無音）。
+      # そのため結果だけ記録して先へ進み、送信ステップが「縮退メール」に切り替える。
+      # ジョブ自体は最後のステップで失敗させ、GitHub上では赤く残す
       - name: 安全ロジックの回帰テスト
+        id: safety_tests
+        continue-on-error: true
         run: node --test tests/safety.test.mjs
 
       - name: 朝のサマリーをメール送信
@@ -43,9 +48,13 @@ jobs:
           TO_EMAIL:           ${{ secrets.TO_EMAIL }}
           TEST_EMAIL:         ${{ github.event.inputs.test_email }}
           APP_URL:            ${{ secrets.APP_URL }}
+          # 落ちとる場合は数字を一切出さん縮退メールに切り替わる
+          SAFETY_TESTS_FAILED: ${{ steps.safety_tests.outcome == 'failure' && '1' || '0' }}
         run: node daily-brief.js
 
+      # テストが落ちとる日は数字を信用できんので履歴に残さない
       - name: スコア履歴CSVをコミット
+        if: steps.safety_tests.outcome == 'success'
         working-directory: notify
         run: |
           if [ -n "$(git status --porcelain score-history.csv)" ]; then
@@ -57,3 +66,10 @@ jobs:
           else
             echo "スコア履歴に変更なし（DRY_RUN、または本日分は記録済み）"
           fi
+
+      # 縮退メールは送った上で、ジョブは失敗として記録する（気づかれずに放置されんように）
+      - name: 回帰テストが落ちとったらジョブを失敗させる
+        if: steps.safety_tests.outcome == 'failure'
+        run: |
+          echo "::error::回帰テストが失敗しました。優くんには縮退メールを送信済みです。上の『安全ロジックの回帰テスト』のログを確認してください。"
+          exit 1

@@ -385,6 +385,60 @@ Don't forget anything! Have a safe and fun dive! 🤿🌊
 }
 
 // ── メイン処理 ─────────────────────────────────────────────
+// ── 判定を出せんときの縮退メール ────────────────────────────
+// 無音は「メールが来んかった」としか伝わらず、優くんは理由も対処も分からん。
+// 数字は一切出さんまま「今日は自動判定を出せません」とだけ伝え、一次情報へ誘導する。
+// 「わからんときは、わからんと言う」= 欠損を良好値で埋めんのと同じ考え方
+const JMA_OKINAWA_URL = 'https://www.jma.go.jp/bosai/warning/#area_type=offices&area_code=471000';
+
+function buildDegradedBody(reason) {
+  return `優くん、おはようございます。
+
+⚠️ 本日は自動判定をお休みします
+
+${reason}
+安全のため、スコアの表示を見合わせています。
+
+お手数ですが、本日は気象庁の発表を直接ご確認ください。
+${JMA_OKINAWA_URL}
+
+復旧までしばらくお待ちください。
+
+━━━━━━━━━━━━━━━━━━━━
+※ 本メールは気象・海況の参考情報です。出港・ダイビングの最終判断は、
+　必ず気象庁の発表と現地の海況で行ってください。安全を保証するものではありません。
+`;
+}
+
+async function sendMail(subject, body) {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: GMAIL_USER, pass: GMAIL_PASSWORD },
+  });
+  await transporter.sendMail({
+    from: `"慶良間ダイビング気象" <${GMAIL_USER}>`,
+    to: TO_EMAIL,
+    subject,
+    text: body,
+  });
+}
+
+function dateLabelJst() {
+  return new Date().toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric' });
+}
+
+// 縮退メールを送って終了する（スコア履歴CSVには何も書かん）
+async function bailOut(reason, dryRun) {
+  const body = buildDegradedBody(reason);
+  if (dryRun) {
+    console.log(body);
+    console.log('(DRY_RUN: 縮退メールの送信をスキップ)');
+    return;
+  }
+  await sendMail(`⚠️ 今日の慶良間 自動判定をお休みします ／ ${dateLabelJst()}`, body);
+  console.log(`⚠️ 縮退メールを送信 → ${TO_EMAIL}（理由: ${reason.replace(/\n/g, ' ')}）`);
+}
+
 async function main() {
   // DRY_RUN は '1' のときだけ有効（'0' や 'false' が真になる文字列判定バグを修正）。
   // DRY_RUN 時は資格情報なしで本文確認できる
@@ -392,6 +446,13 @@ async function main() {
   if (!dryRun && (!GMAIL_USER || !GMAIL_PASSWORD || !TO_EMAIL)) {
     console.error('環境変数 GMAIL_USER / GMAIL_APP_PASSWORD / TO_EMAIL を設定してください');
     process.exit(1);
+  }
+
+  // ワークフローが回帰テストの結果を渡してくる。落ちとるなら解析結果を信用できんので、
+  // データを取りにも行かず縮退メールだけ送る
+  if (process.env.SAFETY_TESTS_FAILED === '1') {
+    await bailOut('気象庁のデータ形式に想定外の変化を検出したため、', dryRun);
+    return;
   }
 
   console.log('📡 データ取得中...');
@@ -405,8 +466,10 @@ async function main() {
   ]);
   const [weather, naha, route, kerama, divePoints, warningsJson] = results.map(r => r.status === 'fulfilled' ? r.value : null);
   if (!weather || !kerama) {
-    console.error('⚠️ 必須データ（天気/慶良間）の取得に失敗しました。メール送信をスキップします。');
-    process.exit(1);
+    // 以前はここで黙って終了しとった（優くんには何も届かん）
+    console.error('⚠️ 必須データ（天気/慶良間）の取得に失敗しました。縮退メールを送ります。');
+    await bailOut('気象・海況データの取得に失敗したため、', dryRun);
+    return;
   }
 
   const todayStr = new Date().toLocaleDateString('ja-JP', {
@@ -446,21 +509,10 @@ async function main() {
   // CSVには上限を掛けん素の値を記録し続ける（2026-07-23からの33日分と系列をそろえるため）
   appendScoreHistory({ todayStr, score, capped, cap, worst, parsedWarnings });
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: GMAIL_USER, pass: GMAIL_PASSWORD },
-  });
-
-  const dateLabel = new Date().toLocaleDateString('ja-JP', {
-    timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric',
-  });
-
-  await transporter.sendMail({
-    from: `"慶良間ダイビング気象" <${GMAIL_USER}>`,
-    to: TO_EMAIL,
-    subject: `🌊 今日の慶良間 コンディション ${score != null ? `${score} out of 10` : '判定不能'} ／ ${dateLabel}`,
-    text: body,
-  });
+  await sendMail(
+    `🌊 今日の慶良間 コンディション ${score != null ? `${score} out of 10` : '判定不能'} ／ ${dateLabelJst()}`,
+    body,
+  );
 
   console.log(`✅ メール送信完了 → ${TO_EMAIL} (スコア: ${score ?? '判定不能'})`);
 }
