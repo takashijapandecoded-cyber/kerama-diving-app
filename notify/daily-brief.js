@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DIVE_POINTS } from '../js/config.js';
 import { calcScore, findCurrentHourIndex, warningScoreCap, calendarIcon } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
+import { fetchTyphoons, pickPrimary, dailyOutlook, waveMaxByDate } from '../js/typhoon.js'; // 台風もアプリと同じ判定を使う
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
 const GMAIL_USER     = process.env.GMAIL_USER;
@@ -157,6 +158,60 @@ function unitNoticeFor(todayStr) {
          '\n　 数値の見た目が変わるだけで、スコアの計算方法は変わっていません。\n';
 }
 
+// ── 台風セクション ─────────────────────────────────────────
+// 優くんが最初に見るのは朝5時のメール。アプリを開かんとその日の台風が
+// 分からんのでは片手落ちなので、本文にも出す。判定はアプリと同一のロジック
+// 'YYYY-MM-DD' → '8/26(水)'。本文の他の日付表記と揃える（先頭ゼロを付けん）
+function tcDay(d) {
+  return `${Number(d.date.slice(5, 7))}/${Number(d.date.slice(8, 10))}(${d.weekday})`;
+}
+
+function tcNo(t) {
+  const n = /^\d{4}$/.test(t?.number ?? '') ? Number(String(t.number).slice(2)) : null;
+  return n ? `台風${n}号` : (t?.category ?? '熱帯低気圧');
+}
+
+function buildTyphoonSection(result, outlook) {
+  const head = '━━━ 台風 ━━━';
+  if (!result || result.status === 'unavailable') {
+    return `${head}\n⚠️ 台風情報を取得できませんでした。気象庁の発表をご確認ください。\n`;
+  }
+  const list = result.typhoons ?? [];
+  if (!list.length) return `${head}\n✅ 発生中の台風はありません\n`;
+
+  const primary = result.primary;
+  if (!primary) {
+    // 全部0% ＝ 今日以降の判断に効かん。名前を並べず件数でまとめる
+    return `${head}\n✅ ${list.length}つ発生中ですが、慶良間が暴風域に入る予測はありません\n`;
+  }
+
+  const days = (outlook ?? []).map(d => {
+    const pct  = d.percent == null ? ' —' : `${String(d.percent).padStart(2)}%`;
+    const wave = d.waveMax == null ? '波 —' : `波${d.waveMax.toFixed(1)}m`;
+    const mark = d.percent != null && d.percent >= 50 ? ' ⚠️' : '';
+    return `  ${d.isToday ? '今日' : '　　'} ${tcDay(d).padEnd(9)} 暴風域${pct}  ${wave}${mark}`;
+  }).join('\n');
+
+  const hit = (outlook ?? []).find(d => d.percent != null && d.percent >= 50);
+  const a = primary.analysis;
+  const lead = hit
+    ? `⚠️ ${tcDay(hit)} までに暴風域に入る確率 ${hit.percent}%`
+    : `暴風域に入る確率 最大 ${primary.probabilitySummary?.max ?? 0}%`;
+  const nearest = [primary.analysis, ...primary.forecasts]
+    .filter(Boolean).reduce((m, b) => (m == null || b.distanceKm < m.distanceKm ? b : m), null);
+  const nearestLine = nearest && !nearest.isAnalysis
+    ? `\n最も近づくのは ${new Date(nearest.validTime).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' })}・${nearest.distanceKm}km`
+    : '';
+
+  return `${head}
+🌀 ${tcNo(primary)} ${primary.name ?? ''}（${a ? `慶良間まで${a.distanceKm}km` : '位置不明'}${a?.windMs != null ? ` / 最大風速${a.windMs}m/s` : ''}）
+${lead}${nearestLine}
+
+${days}
+  ※ 上の確率は「その日までに慶良間・粟国諸島が暴風域に入る」累積値です（気象庁）
+${list.length > 1 ? `  ※ ほか${list.length - 1}つ発生中ですが、慶良間への影響はありません\n` : ''}`;
+}
+
 // ── 週間スコア生成 ─────────────────────────────────────────
 function weeklyScores(weather, kerama) {
   const days     = weather.daily.time;
@@ -275,7 +330,7 @@ ${lines.join('\n')}
 }
 
 // ── メール本文を生成 ───────────────────────────────────────
-function buildEmailBody({ score, capped = false, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx = -1, worst = null, cap = 10 }) {
+function buildEmailBody({ score, capped = false, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx = -1, worst = null, cap = 10, typhoons = null, tcOutlook = null }) {
   const windMs   = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m.toFixed(1) : '--';
   const windDeg  = weather.current?.wind_direction_10m;
   const windDir  = windDeg != null ? degToCompass(windDeg) : '';
@@ -354,6 +409,7 @@ ${unitNoticeFor(todayStr)}
 コンディションスコア: ${score != null ? `${score}/10` : '判定不能'}（${nowLabel}時点）
 ${scoreText(score)}${capped ? '\n⚠️ 警報・注意報の発表中のため、スコアに上限を適用しています' : ''}${worstLine}
 ${buildWarningsSection(warningsJson)}
+${buildTyphoonSection(typhoons, tcOutlook)}
 ━━━ 3地点の状況 ━━━
 📍 那覇港沖:  波${nahaWave}m / 風${windMs}m/s ${windDir}
 ⛵ 航路中間:  波${routeWave}m
@@ -463,8 +519,9 @@ async function main() {
     fetchMarine('kerama'),
     fetchDivePoints(),
     fetchWarningsJma(),
+    fetchTyphoons(),
   ]);
-  const [weather, naha, route, kerama, divePoints, warningsJson] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+  const [weather, naha, route, kerama, divePoints, warningsJson, typhoonsRaw] = results.map(r => r.status === 'fulfilled' ? r.value : null);
   if (!weather || !kerama) {
     // 以前はここで黙って終了しとった（優くんには何も届かん）
     console.error('⚠️ 必須データ（天気/慶良間）の取得に失敗しました。縮退メールを送ります。');
@@ -497,7 +554,13 @@ async function main() {
   // CSVに記録するだけでなく本文にも出す（記録しても優くんの目に入らんかったら意味がない）
   const worst = worstScore716(weather, kerama, todayStr);
 
-  const body = buildEmailBody({ score, capped, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx, worst, cap });
+  // 台風: アプリと同じ判定で、慶良間にいちばん効く1つと日別の見通しを作る。
+  // 取得できとらん場合も status を保ったまま渡し、本文で区別できるようにする
+  const typhoons  = typhoonsRaw ?? { status: 'unavailable', typhoons: [] };
+  typhoons.primary = pickPrimary(typhoons.typhoons);
+  const tcOutlook = typhoons.primary ? dailyOutlook(typhoons.primary, waveMaxByDate(kerama)) : null;
+
+  const body = buildEmailBody({ score, capped, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx, worst, cap, typhoons, tcOutlook });
 
   // DRY_RUN=1 なら送信せずに本文を表示して終了（ローカルテスト用。シート記録も行わない）
   if (dryRun) {
