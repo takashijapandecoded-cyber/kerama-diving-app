@@ -1,5 +1,5 @@
 import { fetchAll } from './api.js';
-import { calcScore, calcSubScores, warningScoreCap, findCurrentHourIndex } from './score.js';
+import { calcScore, calcSubScores, warningScoreCap, findCurrentHourIndex, isCurrentFresh } from './score.js';
 import { parseWarnings } from './warnings.js';
 import { showNoticeIfDue } from './notice.js';
 import { pickPrimary, dailyOutlook, waveMaxByDate } from './typhoon.js';
@@ -46,8 +46,13 @@ function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson,
   const hIdx         = findCurrentHourIndex(kerama?.hourly?.time ?? []);
   const currentWave  = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx] : undefined;
   const currentSwell = hIdx >= 0 ? kerama.hourly.swell_wave_period?.[hIdx] : undefined;
-  const currentWind  = weather?.current?.wind_speed_10m;  // m/s（APIで指定済み）
-  const currentCode  = weather?.current?.weathercode;
+  // 波高・うねりは findCurrentHourIndex で時刻を検証してから使うのに、風と天気だけは
+  // current をノーチェックで使っとった。天気APIが凍結すると、古い凪の風と最新の波を
+  // 合成して「絶好のコンディション／出港OK」が出る（2026-08-25 レビューで発覚）。
+  // 海況と同じく、古い現在値は判定不能に落とす
+  const weatherFresh = isCurrentFresh(weather?.current?.time);
+  const currentWind  = weatherFresh ? weather.current.wind_speed_10m : undefined;  // m/s（APIで指定済み）
+  const currentCode  = weatherFresh ? weather.current.weathercode    : undefined;
 
   const inputs    = { waveHeight: currentWave, windSpeed: currentWind, weatherCode: currentCode, swellPeriod: currentSwell };
   const rawScore  = calcScore(inputs);
@@ -55,7 +60,8 @@ function renderAll(epic, weather, naha, route, kerama, divePoints, warningsJson,
   const cap       = warningScoreCap(warnings);
   const score     = rawScore == null ? null : Math.min(rawScore, cap);
   const subScores = calcSubScores(inputs);
-  subScores.temp  = weather?.current?.temperature_2m != null ? Math.round(weather.current.temperature_2m) : null;
+  subScores.temp  = weatherFresh && weather.current.temperature_2m != null
+    ? Math.round(weather.current.temperature_2m) : null;
 
   renderHero(epic, score, subScores, { capped: rawScore != null && cap < rawScore });
   renderWarningChips(warnings, tcResult);

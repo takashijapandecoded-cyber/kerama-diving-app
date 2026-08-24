@@ -76,7 +76,7 @@ export async function fetchWeather() {
   url.searchParams.set('latitude', lat);
   url.searchParams.set('longitude', lon);
   url.searchParams.set('current', 'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode');
-  url.searchParams.set('hourly', 'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode,precipitation_probability');
+  url.searchParams.set('hourly', 'temperature_2m,wind_speed_10m,wind_direction_10m,weathercode');
   url.searchParams.set('daily', 'weathercode,temperature_2m_max,wind_speed_10m_max');
   url.searchParams.set('timezone', 'Asia/Tokyo');
   url.searchParams.set('forecast_days', '7');
@@ -114,6 +114,9 @@ export async function fetchMarine(locationKey) {
   ].join(','));
   url.searchParams.set('timezone', 'Asia/Tokyo');
   url.searchParams.set('forecast_days', '7');
+  // 前日ぶんも取る。今日0時の満干潮は「前の値」が無いと山にも谷にもなれず落ちるため
+  // （2026-08-25 実測で7日中2日が該当。renderTideChart のピーク検出が1点前から始まる）
+  url.searchParams.set('past_days', '1');
 
   const res = await fetchOk(url, { label: `Open-Meteo Marine (${locationKey})` });
   const data = await res.json();
@@ -121,7 +124,7 @@ export async function fetchMarine(locationKey) {
   return data;
 }
 
-// Open-Meteo Marine: 5ダイビングポイントを1回のマルチ座標リクエストで取得
+// Open-Meteo Marine: 全ダイビングポイントを1回のマルチ座標リクエストで取得
 // レスポンスはポイントごとの配列で返る（DIVE_POINTS と同じ並び）
 export async function fetchDivePoints() {
   const cached = fromCache('divepoints');

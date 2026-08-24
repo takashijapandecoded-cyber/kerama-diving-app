@@ -1,5 +1,17 @@
 import { SCORE_THRESHOLDS, SCORE_WEIGHTS, WAVE_PENALTY_FACTOR, SEA_WARNING_CODES, WARNING_SCORE_CAPS } from './config.js';
 
+// 物理的にありえん値は「取れとらん」と同じ扱いにする。
+// Number.isFinite だけやと waveHeight:-1 が「波0.5m以下」の枠に落ちて満点10になる
+// （2026-08-25 レビューで発覚。外部APIの異常値・センチネル値をそのまま最高評価にせん）
+function validMeasure(v) {
+  return Number.isFinite(v) && v >= 0;
+}
+
+// WMO天気コードは 0〜99。範囲外は不明として扱う
+function validWeatherCode(v) {
+  return Number.isFinite(v) && v >= 0 && v <= 99;
+}
+
 function scoreFromTable(value, table) {
   for (const entry of table) {
     if (value <= entry.max) return entry.score;
@@ -32,11 +44,11 @@ function scoreWeatherCode(code) {
 // フェイルセーフ: 必須入力（波高・風速）が欠けとる場合は null（判定不能）を返す。
 // 欠損を「良好」な値で埋めて出港OKを出さないため（2026-07-19 評議会 裁可項目1）
 export function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
-  if (!Number.isFinite(waveHeight) || !Number.isFinite(windSpeed)) return null;
+  if (!validMeasure(waveHeight) || !validMeasure(windSpeed)) return null;
   const waveScore   = scoreFromTable(waveHeight, SCORE_THRESHOLDS.wave);
   const windScore   = scoreFromTable(windSpeed,  SCORE_THRESHOLDS.wind);
-  const weatherScore = Number.isFinite(weatherCode) ? scoreWeatherCode(weatherCode) : 5; // 不明時は中立
-  const swellScore  = Number.isFinite(swellPeriod) ? scoreSwellPeriod(swellPeriod) : 5;  // 不明時は中立
+  const weatherScore = validWeatherCode(weatherCode) ? scoreWeatherCode(weatherCode) : 5; // 不明時は中立
+  const swellScore  = validMeasure(swellPeriod) ? scoreSwellPeriod(swellPeriod) : 5;      // 不明時は中立
 
   const raw =
     waveScore   * SCORE_WEIGHTS.wave +
@@ -58,10 +70,10 @@ export function calcScore({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
 // 内訳チップ用: 各要素の個別スコア（欠損は null）
 export function calcSubScores({ waveHeight, windSpeed, weatherCode, swellPeriod }) {
   return {
-    wave:    Number.isFinite(waveHeight)  ? scoreFromTable(waveHeight, SCORE_THRESHOLDS.wave) : null,
-    wind:    Number.isFinite(windSpeed)   ? scoreFromTable(windSpeed,  SCORE_THRESHOLDS.wind) : null,
-    weather: Number.isFinite(weatherCode) ? scoreWeatherCode(weatherCode) : null,
-    swell:   Number.isFinite(swellPeriod) ? scoreSwellPeriod(swellPeriod) : null,
+    wave:    validMeasure(waveHeight)      ? scoreFromTable(waveHeight, SCORE_THRESHOLDS.wave) : null,
+    wind:    validMeasure(windSpeed)       ? scoreFromTable(windSpeed,  SCORE_THRESHOLDS.wind) : null,
+    weather: validWeatherCode(weatherCode) ? scoreWeatherCode(weatherCode) : null,
+    swell:   validMeasure(swellPeriod)     ? scoreSwellPeriod(swellPeriod) : null,
   };
 }
 
@@ -133,14 +145,31 @@ export function findTidePeaks(times, heights) {
   return peaks;
 }
 
-// 今日の日付（JST）に絞った潮汐ピーク
-export function todayPeaks(peaks) {
-  const todayStr = new Date().toLocaleDateString('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).replace(/\//g, '-');
+// 潮汐の窓を作る。{ display, detect } のインデックス配列を返す。
+//   display … 画面に描く範囲（dayStr 以降の hours 時間）
+//   detect  … ピーク検出に渡す範囲（display の1つ前を含む）
+//
+// 窓の作り方をアプリとメールに別々に書くと、片方だけ潮が落ちる。実際に2回やった:
+//   2026-08-24 メールだけ23時の干潮が消えた（今日ぶんしか渡しとらんかった）
+//   2026-08-25 両方で0時のピークが消えた（窓の先頭は prev が無く山にも谷にもなれん）
+// 窓の定義はここを唯一の正にする。detect の1つ前は past_days=1 で取っとる前日ぶん
+export function tideWindow(times, dayStr, hours = 48) {
+  const display = [];
+  for (let i = 0; i < times.length; i++) {
+    if (times[i].slice(0, 10) < dayStr) continue;
+    display.push(i);
+    if (display.length >= hours) break;
+  }
+  if (!display.length) return { display, detect: [] };
+  const detect = (display[0] > 0 ? [display[0] - 1] : []).concat(display);
+  return { display, detect };
+}
 
-  return peaks.filter(p => p.time.startsWith(todayStr.slice(0, 10)));
+// その日の満潮・干潮。窓の作り方も検出もここに集約する（アプリ・メール共用）
+export function tidePeaksForDay(times, heights, dayStr, hours = 48) {
+  const { detect } = tideWindow(times ?? [], dayStr, hours);
+  return findTidePeaks(detect.map(i => times[i]), detect.map(i => heights?.[i]))
+    .filter(p => p.time.startsWith(dayStr));
 }
 
 // 連続するピークペアから上げ潮・下げ潮の時間帯を返す
@@ -169,4 +198,30 @@ export function findCurrentHourIndex(times) {
   // （旧実装はこの不一致を「見つからんかったら先頭」フォールバックが隠しとった）
   const nowStr = new Date().toLocaleString('sv', { timeZone: 'Asia/Tokyo' }).slice(0, 13).replace(' ', 'T');
   return times.findIndex(t => t.startsWith(nowStr));
+}
+
+// Open-Meteo が timezone=Asia/Tokyo で返す時刻は「2026-08-25T00:00」のように
+// オフセットを持たん素の文字列。そのまま new Date() すると端末のタイムゾーンで
+// 解釈されるため、JST以外の端末で開くと表示が時差ぶんずれる（2026-08-25 実測:
+// UTC端末で「00:00 JST」が「09:00 JST」と出とった）。JSTとして明示的に読む。
+export function parseApiTime(timeStr) {
+  if (typeof timeStr !== 'string' || !timeStr) return null;
+  const hasZone = /(?:Z|[+-]\d\d:?\d\d)$/.test(timeStr);
+  const t = Date.parse(hasZone ? timeStr : `${timeStr}+09:00`);
+  return Number.isFinite(t) ? t : null;
+}
+
+// current ブロックの鮮度。これより古い「現在値」は凍結とみなす
+export const CURRENT_MAX_AGE_H = 2;
+
+// weather.current の time が今のものか。
+// 波高・うねりは findCurrentHourIndex で時刻を検証してから使うのに、風と天気だけは
+// current をノーチェックで使っとった。天気APIが凍結すると、古い凪の風と最新の波を
+// 合成して「絶好のコンディション」が出る（2026-08-25 レビューで発覚）。
+// 実測では current.time の遅れは 0.14時間程度なので、2時間あれば正常時に誤検知せん
+export function isCurrentFresh(timeStr, now = Date.now()) {
+  const t = parseApiTime(timeStr);
+  if (t == null) return false;
+  const ageH = (now - t) / 3600000;
+  return ageH >= -1 && ageH <= CURRENT_MAX_AGE_H;   // -1 は端末時計のずれ吸収
 }

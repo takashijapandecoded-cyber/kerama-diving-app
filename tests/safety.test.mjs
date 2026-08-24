@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { calcScore, warningScoreCap, scoreLabel, findCurrentHourIndex,
-         findTidePeaks, tidePeriods } from '../js/score.js';
+         findTidePeaks, tidePeriods, tideWindow, tidePeaksForDay,
+         parseApiTime, isCurrentFresh } from '../js/score.js';
 import { parseWarnings, feedIsAlive, fetchWarningsViaXml, pickLatestWarningXmlUrl } from '../js/warnings.js';
 import { WARNING_AREAS, DIVE_POINTS } from '../js/config.js';
 import { readFileSync } from 'node:fs';
@@ -13,7 +14,7 @@ import { isWithinWindow, DISPLAY_FROM, DISPLAY_TO } from '../js/notice.js';
 import { distanceKm, parseSpecifications, parseKeramaProbability,
          summarizeProbability, fetchTyphoons,
          pickPrimary, dailyOutlook, waveMaxByDate,
-         approachWindow, probabilityCutoffHour } from '../js/typhoon.js';
+         approachWindow, probabilityCutoffHour, probabilityMissing } from '../js/typhoon.js';
 
 test('欠損・異常値では絶対にスコアを出さない（誤GO防止）', () => {
   assert.equal(calcScore({}), null);
@@ -152,8 +153,16 @@ test('気象庁の実データでも市町村コードと名前が一致する�
       signal: AbortSignal.timeout(30000),
     });
     if (!feed.ok) return t.skip('気象庁フィードに到達できず');
-    const url = pickLatestWarningXmlUrl(await feed.text());
-    if (!url) return t.skip('沖縄のVPWW54が見つからず');
+    const feedText = await feed.text();
+    const url = pickLatestWarningXmlUrl(feedText);
+    if (!url) {
+      // 沖縄で1週間発表が無いのは実際にありうる（平穏）。ただし全国どこにも VPWW54 が
+      // 無いのは実質ありえん＝URL書式が変わってURL抽出が死んどる疑い。
+      // ここを無条件 skip にしとくと、書式変更でエリアコード検査が静かにゼロになる
+      assert.ok(/_VPWW54_/.test(feedText),
+        '長期フィードに VPWW54 が全国分1件も無い。URLの書式が変わった可能性');
+      return t.skip('沖縄のVPWW54が見つからず（全国分は取れとるので平穏と判断）');
+    }
     const xml = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (!xml.ok) return t.skip('警報XMLに到達できず');
     xmlText = await xml.text();
@@ -472,17 +481,21 @@ test('findTidePeaks: 末尾のピークは翌日の値まで渡さんと拾え�
   assert.deepEqual(plusNextDay.map(p => p.time), ['2026-08-24T11:00', '2026-08-24T23:00']);
 });
 
-test('notify 側の潮汐は48時間窓で拾う（アプリと同じ数になること）', () => {
-  const src = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
-  assert.ok(/slice\(0, 48\)/.test(src), 'アプリ側 renderTideChart と同じ48時間窓にすること');
-  assert.ok(!/peakTimes\.filter\(t => t\.startsWith\(todayStr\)\)/.test(src),
-    '今日ぶんだけを渡すと末尾のピークが落ちる');
+test('アプリもメールも潮汐の窓は js/score.js の共用関数だけを通る', () => {
+  for (const rel of ['js/ui.js', 'notify/daily-brief.js']) {
+    const src = readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
+    assert.ok(/tidePeaksForDay/.test(src), `${rel}: 共用の tidePeaksForDay を使うこと`);
+    // 窓を自前で組み直すと、また片方だけ潮が落ちる（8/24・8/25 で2回やった）
+    assert.ok(!/slice\(0, 48\)/.test(src), `${rel}: 48時間窓を自前で切らんこと（score.js に集約）`);
+    assert.ok(!/findTidePeaks\(/.test(src), `${rel}: 検出を直接呼ばず tidePeaksForDay を通すこと`);
+  }
 });
 
 test('notify 側に潮汐の自前コピーを置かない（アプリと不一致になる元）', () => {
   const src = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
-  assert.ok(!/function\s+findPeaks\s*\(/.test(src), 'daily-brief.js は js/score.js の findTidePeaks を使う');
-  assert.ok(src.includes('findTidePeaks'), 'アプリと同じ関数を import しとること');
+  assert.ok(!/function\s+findPeaks\s*\(/.test(src), 'daily-brief.js は js/score.js の検出を使う');
+  assert.ok(!/function\s+findTidePeaks\s*\(/.test(src), '検出そのものを自前で持たんこと');
+  assert.ok(src.includes("from '../js/score.js'"), 'アプリと同じモジュールから取ること');
 });
 
 // ── 台風の最接近と確率の基準時刻（2026-08-24 発覚）────────────────────
@@ -525,4 +538,219 @@ test('probabilityCutoffHour: 累積確率の締め時刻をJSTで返す', () => 
   assert.equal(probabilityCutoffHour({ probabilityBaseTime: '2026-08-24T15:00:00Z' }), 0);
   assert.equal(probabilityCutoffHour({}), null);
   assert.equal(probabilityCutoffHour({ probabilityBaseTime: 'ではない' }), null);
+});
+
+// ── 2026-08-25 のコードレビュー（Claude + Codex）で見つかった穴の回帰テスト ──────
+
+test('物理的にありえん値は満点にせず判定不能に落とす', () => {
+  // Number.isFinite だけやと -1 が「波0.5m以下」の枠に落ちて10点になっとった
+  assert.equal(calcScore({ waveHeight: -1, windSpeed: -1, weatherCode: 0, swellPeriod: 10 }), null);
+  assert.equal(calcScore({ waveHeight: 0.4, windSpeed: -0.1, weatherCode: 0, swellPeriod: 10 }), null);
+  assert.equal(calcScore({ waveHeight: -0.1, windSpeed: 3, weatherCode: 0, swellPeriod: 10 }), null);
+  // 0 は正常値（凪）なので通す
+  assert.equal(calcScore({ waveHeight: 0, windSpeed: 0, weatherCode: 0, swellPeriod: 10 }), 10);
+  // 範囲外の天気コードは「不明」＝中立扱いで、計算は続く
+  assert.ok(Number.isFinite(calcScore({ waveHeight: 0.4, windSpeed: 3, weatherCode: 999, swellPeriod: 10 })));
+});
+
+test('parseApiTime: オフセット無しの時刻をJSTとして読む（端末TZに依存させない）', () => {
+  // Open-Meteo は timezone=Asia/Tokyo でも '2026-08-25T00:00' とオフセット無しで返す。
+  // 素の new Date() やと端末のTZで解釈され、UTC端末で9時間ずれとった。
+  //
+  // ここを JST の端末だけで確かめると、壊れた実装でも通ってしまう
+  // （実際 2026-08-25 の初回はそれで赤くならんかった）。TZを振って検査する
+  const origTz = process.env.TZ;
+  try {
+    for (const tz of ['Asia/Tokyo', 'UTC', 'America/Los_Angeles', 'Pacific/Kiritimati']) {
+      process.env.TZ = tz;
+      assert.equal(parseApiTime('2026-08-25T00:00'), Date.parse('2026-08-24T15:00:00Z'),
+        `TZ=${tz} で JST として読めとらん`);
+      assert.equal(isCurrentFresh('2026-08-25T05:00', Date.parse('2026-08-25T05:00:00+09:00')), true,
+        `TZ=${tz} で鮮度判定がずれとる`);
+      assert.equal(isCurrentFresh('2026-08-24T05:00', Date.parse('2026-08-25T05:00:00+09:00')), false,
+        `TZ=${tz} で前日の current を通しとる`);
+    }
+  } finally {
+    if (origTz === undefined) delete process.env.TZ; else process.env.TZ = origTz;
+  }
+
+  // オフセット付きはそのまま尊重する
+  assert.equal(parseApiTime('2026-08-25T00:00:00Z'), Date.parse('2026-08-25T00:00:00Z'));
+  assert.equal(parseApiTime('2026-08-25T09:00:00+09:00'), Date.parse('2026-08-25T00:00:00Z'));
+  assert.equal(parseApiTime(null), null);
+  assert.equal(parseApiTime('ではない'), null);
+});
+
+test('isCurrentFresh: 凍結した current を「今の値」として使わせない', () => {
+  const now = Date.parse('2026-08-25T05:00:00+09:00');
+  assert.equal(isCurrentFresh('2026-08-25T05:00', now), true,  '同じ時刻を古い扱いにしとる');
+  assert.equal(isCurrentFresh('2026-08-25T04:00', now), true,  '1時間前は正常範囲');
+  // 天気APIが前日のまま凍結 → 古い凪の風と最新の波を合成して満点が出とった
+  assert.equal(isCurrentFresh('2026-08-24T05:00', now), false, '前日の current を通しとる');
+  assert.equal(isCurrentFresh('2026-08-25T01:00', now), false, '4時間前を通しとる');
+  assert.equal(isCurrentFresh(undefined, now), false);
+});
+
+test('潮汐の窓は「1つ前」を検出に含める（0時のピークを落とさない）', () => {
+  // 昨日23時 → 今日0時が山 → 今日1時。0時のピークは前の値が無いと検出できん
+  const times   = ['2026-08-26T23:00', '2026-08-27T00:00', '2026-08-27T01:00', '2026-08-27T02:00'];
+  const heights = [1.0, 2.0, 1.0, 0.8];
+
+  const { display, detect } = tideWindow(times, '2026-08-27');
+  assert.deepEqual(display, [1, 2, 3], '表示範囲に前日が混ざっとる');
+  assert.deepEqual(detect,  [0, 1, 2, 3], '検出範囲に前日の1点が入っとらん');
+
+  const peaks = tidePeaksForDay(times, heights, '2026-08-27');
+  assert.deepEqual(peaks, [{ time: '2026-08-27T00:00', height: 2.0, type: 'high' }],
+    '0時の満潮が落ちとる');
+});
+
+test('潮汐の窓: 前日ぶんが無ければ従来どおり（0時は拾えんが落ちもせん）', () => {
+  const times   = ['2026-08-27T00:00', '2026-08-27T01:00', '2026-08-27T02:00'];
+  const heights = [2.0, 1.0, 0.8];
+  const { display, detect } = tideWindow(times, '2026-08-27');
+  assert.deepEqual(display, [0, 1, 2]);
+  assert.deepEqual(detect,  [0, 1, 2], '前が無いのに負のインデックスを足しとる');
+  assert.deepEqual(tidePeaksForDay(times, heights, '2026-08-27'), []);
+});
+
+test('潮汐の窓: 慶良間の実データ（8/27）で0時の干潮と上げ潮帯が戻る', () => {
+  // 2026-08-27 の慶良間（Open-Meteo・past_days=1 で前日23時を含む）
+  const rows = [
+    ['2026-08-26T23:00', 0.76], ['2026-08-27T00:00', 0.74], ['2026-08-27T01:00', 0.79],
+    ['2026-08-27T02:00', 0.92], ['2026-08-27T03:00', 1.10], ['2026-08-27T04:00', 1.28],
+    ['2026-08-27T05:00', 1.40], ['2026-08-27T06:00', 1.44], ['2026-08-27T07:00', 1.38],
+    ['2026-08-27T08:00', 1.23], ['2026-08-27T09:00', 1.02], ['2026-08-27T10:00', 0.80],
+    ['2026-08-27T11:00', 0.62], ['2026-08-27T12:00', 0.55], ['2026-08-27T13:00', 0.60],
+    ['2026-08-27T14:00', 0.76], ['2026-08-27T15:00', 1.00], ['2026-08-27T16:00', 1.26],
+  ];
+  const times = rows.map(r => r[0]), heights = rows.map(r => r[1]);
+  const peaks = tidePeaksForDay(times, heights, '2026-08-27');
+  assert.deepEqual(peaks.map(p => `${p.time.slice(11, 16)} ${p.type}`),
+    ['00:00 low', '06:00 high', '12:00 low'], '0時の干潮が落ちとる');
+  // 干潮→満潮の帯も連鎖で戻る（旧実装では 00:00→06:00 が丸ごと消えとった）
+  assert.deepEqual(tidePeriods(peaks).filter(p => p.type === 'rising'),
+    [{ type: 'rising', from: '00:00', to: '06:00' }]);
+});
+
+test('pickPrimary: 確率が取れとらん台風を「0%」と同じ扱いにせん', () => {
+  // 2026-08-25 実測の再現。気象庁のフィードが落ちると確率が付かず、199kmまで
+  // 接近して暴風域の内側を通る予報の台風でも null になり、メールが
+  // 「慶良間が暴風域に入る予測はありません」と安全を断定しとった
+  const missing = {
+    id: 'TC2621', number: '2618', nearestKm: 199,
+    everInsideStorm: true, everInsideGale: true,
+    probabilityStatus: 'unavailable',
+  };
+  assert.equal(pickPrimary([missing])?.id, 'TC2621', '確率未取得＋暴風域の内側を捨てとる');
+  assert.equal(probabilityMissing([missing]), true);
+
+  // 確率が取れた上で0%なら、従来どおり null（カードを出さずチップだけ）
+  const zero = { id: 'TC2624', nearestKm: 1144, everInsideStorm: false, everInsideGale: false,
+                 probabilityStatus: 'ok', probabilitySummary: { max: 0 } };
+  assert.equal(pickPrimary([zero]), null);
+  assert.equal(probabilityMissing([zero]), false);
+
+  // 遠すぎて取りに行っとらん（'far'）ものは、半径でも効かんので従来どおり null
+  const far = { id: 'TC2622', nearestKm: 1791, everInsideStorm: false, everInsideGale: false,
+                probabilityStatus: 'far' };
+  assert.equal(pickPrimary([far]), null);
+  assert.equal(probabilityMissing([far]), false);
+
+  // 確率が分かっとるものを優先（不明より情報量が多い）
+  const known = { id: 'K', nearestKm: 900, probabilityStatus: 'ok', probabilitySummary: { max: 83 } };
+  assert.equal(pickPrimary([missing, known])?.id, 'K');
+});
+
+test('parseSpecifications: 強風域の内外と確率ステータスの初期値', () => {
+  const json = [
+    { part: 'title', typhoonNumber: '2618', name: { jp: 'ソウデル' }, category: { jp: '台風' } },
+    { part: { jp: '実況' }, advancedHours: 0, position: { deg: [26.3, 129.1] },  // 慶良間から約179km
+      stormWarning: [{ range: { km: 150 } }], galeWarning: [{ range: { km: 390 } }] },
+  ];
+  const t = parseSpecifications(json, 'TC2621');
+  assert.equal(t.analysis.insideStorm, false, '179km は暴風域150kmの外');
+  assert.equal(t.analysis.insideGale,  true,  '179km は強風域390kmの内');
+  assert.equal(t.everInsideGale, true);
+  // 確率XMLを取りに行く前は 'far'。attachProbabilities が 'unavailable'/'ok' に上書きする
+  assert.equal(t.probabilityStatus, 'far');
+});
+
+test('fetchTyphoons: 一部だけ取得失敗したら ok に混ぜず partial で件数を出す', async () => {
+  const orig = globalThis.fetch;
+  // 2件追跡中。片方の specifications.json だけ落ちる
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('targetTc.json')) {
+      return { ok: true, json: async () => [{ tropicalCyclone: 'TC1' }, { tropicalCyclone: 'TC2' }] };
+    }
+    if (u.includes('/TC1/')) throw new Error('取得失敗');
+    if (u.includes('/TC2/')) {
+      return { ok: true, json: async () => [
+        { part: 'title', typhoonNumber: '2620', category: { jp: '台風' } },
+        { part: { jp: '実況' }, advancedHours: 0, position: { deg: [13.6, 136.2] } },
+      ] };
+    }
+    throw new Error('フィード不通');   // 確率XMLは取れん想定
+  };
+  try {
+    const r = await fetchTyphoons();
+    // 旧実装は「1件でも成功すれば ok」。接近中の1つだけ落ちた日に、
+    // 遠い台風だけが並んで「影響なし」に見えとった
+    assert.equal(r.status, 'partial', '欠けとる事実が status に出とらん');
+    assert.equal(r.missing, 1);
+    assert.equal(r.typhoons.length, 1);
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+// ── 表示側の取り決め（DOM が要る関数はソースで守る）────────────────
+
+test('日付・時刻の整形にJSTを必ず指定する（端末TZで1日ずれさせない）', () => {
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  // 端末ローカルの日付・曜日を取る書き方が残っとらんこと
+  assert.ok(!/\.getDate\(\)/.test(ui), 'ui.js に端末ローカルの getDate() が残っとる');
+  // 呼び出しが複数行にまたがるので、行やなく呼び出し単位で見る
+  for (const m of ui.matchAll(/toLocale(?:Date|Time)?String\(/g)) {
+    const call = ui.slice(m.index, m.index + 220);
+    const line = ui.slice(0, m.index).split('\n').length;
+    assert.ok(/timeZone/.test(call.split(';')[0]),
+      `js/ui.js:${line} の ${m[0]} に timeZone 指定が無い`);
+  }
+  // オフセット無しのAPI時刻を素の new Date() に渡さんこと
+  assert.ok(/parseApiTime/.test(ui), 'ui.js は parseApiTime を通してAPI時刻を読むこと');
+});
+
+test('欠損を「快晴」や undefined に化けさせない', () => {
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  // ?? 0 やと天気コード欠損が「快晴」になる
+  assert.ok(!/getWeatherIcon\([^)]*\?\?\s*0\)/.test(ui), 'ui.js: 天気コード欠損を 0（快晴）に倒しとる');
+
+  const mail = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
+  // ?.toFixed() は null で undefined を返し、そのまま本文に「undefined℃」と出る
+  mail.split('\n').forEach((line, i) => {
+    if (line.trimStart().startsWith('//')) return;
+    if (!/\$\{[^}]*\?\.toFixed\([0-9]\)\}/.test(line)) return;
+    assert.fail(`notify/daily-brief.js:${i + 1} ?.toFixed() の結果に ?? '--' が無い → ${line.trim()}`);
+  });
+});
+
+test('取得失敗のセクションを黙って消さない（見出しは必ず出す）', () => {
+  const mail = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
+  // 見出しごと消えると「省略された」のか「取れんかった」のか判別できん
+  assert.ok(!/function buildDivePointsSection[\s\S]{0,200}?return '';/.test(mail),
+    'ポイント別が取得失敗のとき空文字を返しとる（見出しごと消える）');
+  assert.ok(/ポイント別データを取得できませんでした/.test(mail),
+    '取得失敗を本文に書くこと');
+});
+
+test('CSVには上限を掛けん素のスコアを記録する', () => {
+  const mail = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
+  // 8/6 の score5am=3 は波浪警報の上限そのもので、モデルの出力やなかった
+  assert.ok(/appendScoreHistory\(\{[^}]*rawScore/.test(mail),
+    'appendScoreHistory に素の値（rawScore）を渡すこと');
+  assert.ok(!/appendScoreHistory\(\{\s*todayStr,\s*score,/.test(mail),
+    '上限つきの score をそのまま記録しとる');
+  assert.ok(/scoreShown/.test(mail), 'メールに出した値も別列に残すこと');
 });

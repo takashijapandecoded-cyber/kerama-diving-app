@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DIVE_POINTS } from '../js/config.js';
-import { calcScore, findCurrentHourIndex, warningScoreCap, calendarIcon, findTidePeaks, tidePeriods } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
+import { calcScore, findCurrentHourIndex, warningScoreCap, calendarIcon, tidePeaksForDay, tidePeriods, isCurrentFresh } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
 import { isWithinWindow } from '../js/notice.js'; // お知らせの表示期間もアプリと共用（日付は notice.js が唯一の正）
-import { fetchTyphoons, pickPrimary, dailyOutlook, waveMaxByDate, approachWindow, probabilityCutoffHour } from '../js/typhoon.js'; // 台風もアプリと同じ判定を使う
+import { fetchTyphoons, pickPrimary, dailyOutlook, waveMaxByDate, approachWindow, probabilityCutoffHour, probabilityMissing } from '../js/typhoon.js'; // 台風もアプリと同じ判定を使う
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
 const GMAIL_USER     = process.env.GMAIL_USER;
@@ -55,12 +55,14 @@ async function fetchMarine(locKey) {
   p.set('hourly', 'wave_height,swell_wave_period,sea_level_height_msl,sea_surface_temperature');
   p.set('timezone', 'Asia/Tokyo');
   p.set('forecast_days', '7');
+  // 前日ぶんも取る。今日0時の満干潮は「前の値」が無いと落ちるため（js/api.js と同じ理由）
+  p.set('past_days', '1');
   const res = await fetch(url.toString(), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`fetchMarine(${locKey}) failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
 
-// 5ダイビングポイントを1回のマルチ座標リクエストで取得（DIVE_POINTSと同じ並びの配列で返る）
+// 全ダイビングポイントを1回のマルチ座標リクエストで取得（DIVE_POINTSと同じ並びの配列で返る）
 async function fetchDivePoints() {
   const url = new URL('https://marine-api.open-meteo.com/v1/marine');
   const p = url.searchParams;
@@ -178,10 +180,19 @@ function buildTyphoonSection(result, outlook) {
   const list = result.typhoons ?? [];
   if (!list.length) return `${head}\n✅ 発生中の台風はありません\n`;
 
+  // 一部の台風だけ取得できとらん場合、残りが遠いものばかりやと「影響なし」に見える
+  const partialNote = result.status === 'partial'
+    ? `\n⚠️ 発生中のうち${result.missing}つは詳細を取得できていません。気象庁でご確認ください。` : '';
+
   const primary = result.primary;
   if (!primary) {
-    // 全部0% ＝ 今日以降の判断に効かん。名前を並べず件数でまとめる
-    return `${head}\n✅ ${list.length}つ発生中ですが、慶良間が暴風域に入る予測はありません\n`;
+    // 「確率が取れた上で全部0%」のときだけ影響なしと言い切れる。
+    // 確率が取れとらんのに安全を断定すると、実際は接近しとる日に誤誘導する
+    // （2026-08-25 実測: フィード不通で199kmの18号がこの文に化けた）
+    if (probabilityMissing(list)) {
+      return `${head}\n⚠️ ${list.length}つ発生中ですが、暴風域に入る確率を取得できませんでした\n→ 最新は https://www.jma.go.jp/bosai/typhoon/ で確認してください${partialNote}\n`;
+    }
+    return `${head}\n✅ ${list.length}つ発生中ですが、慶良間が暴風域に入る予測はありません${partialNote}\n`;
   }
 
   const days = (outlook ?? []).map(d => {
@@ -195,9 +206,18 @@ function buildTyphoonSection(result, outlook) {
   const a = primary.analysis;
   const cutoff = probabilityCutoffHour(primary);
   const cutoffLabel = cutoff != null ? `${cutoff}時` : '';
-  const lead = hit
-    ? `⚠️ ${tcDay(hit)}${cutoffLabel} までに暴風域に入る確率 ${hit.percent}%`
-    : `暴風域に入る確率 最大 ${primary.probabilitySummary?.max ?? 0}%`;
+  // 確率が取れとらんときに「最大 0%」と書くと、予報が暴風域の内側を通しとっても安全に読める
+  const unknownPct = primary.probabilityStatus === 'unavailable';
+  const lead = unknownPct
+    ? '⚠️ 暴風域に入る確率を取得できませんでした'
+      + (primary.everInsideStorm ? '\n　 気象庁の予報では、慶良間が暴風域の内側に入る見込みです'
+        : primary.everInsideGale ? '\n　 気象庁の予報では、慶良間が強風域の内側に入る見込みです' : '')
+      + '\n→ 最新は https://www.jma.go.jp/bosai/typhoon/ で確認してください'
+    : hit
+      ? `⚠️ ${tcDay(hit)}${cutoffLabel} までに暴風域に入る確率 ${hit.percent}%`
+      : `暴風域に入る確率 最大 ${primary.probabilitySummary?.max ?? 0}%`;
+  // primary 以外の確率も取れとらんなら「影響はありません」と断定できん
+  const othersUnknown = probabilityMissing(list.filter(t => t !== primary));
   const win = approachWindow(primary);
   const nearestLine = win
     ? `\n${tcTime(win.fromTime)}〜${tcTime(win.toTime)} にかけて ${win.withinKm}km以内まで接近`
@@ -209,7 +229,7 @@ ${lead}${nearestLine}
 
 ${days}
   ※ 上の確率は「その日の${cutoffLabel || '同時刻'}までに慶良間・粟国諸島が暴風域に入る」累積値です（気象庁）${win?.coarse ? '\n  ※ 接近の時刻に幅があるのは、この先の予報が24時間刻みになるためです' : ''}
-${list.length > 1 ? `  ※ ほか${list.length - 1}つ発生中ですが、慶良間への影響はありません\n` : ''}`;
+${list.length > 1 ? `  ※ ほか${list.length - 1}つ発生中${othersUnknown ? 'ですが、暴風域に入る確率は取得できていません' : 'ですが、慶良間への影響はありません'}\n` : ''}${partialNote ? partialNote + '\n' : ''}`;
 }
 
 // ── 週間スコア生成 ─────────────────────────────────────────
@@ -269,22 +289,42 @@ function worstScore716(weather, kerama, todayStr) {
 // このリポジトリ内のファイルに直接書き込み、ワークフロー側でコミット・プッシュする
 // （Google側の設定が一切要らんよう、あえてこの方式にしとる）。
 // 副次機能であり安全機能ではないため、失敗してもメール送信は止めない
-function appendScoreHistory({ todayStr, score, capped, cap, worst, parsedWarnings }) {
+// CSVの列。score5am / scoreWorst716 は「上限を掛けん素のモデル出力」、
+// scoreShown / cap は「実際に優くんが見た値」と「その日の上限」。
+// 2026-08-25 より前の行は score5am に上限つきの値が入っとる（capped="yes" の4行が該当）。
+// 過去の行は書き換えず、以降の行だけを正しい意味で積む
+const CSV_COLUMNS     = ['date', 'score5am', 'capped', 'scoreWorst716', 'worstTime', 'warnings', 'scoreShown', 'cap'];
+const CSV_COLUMNS_OLD = ['date', 'score5am', 'capped', 'scoreWorst716', 'worstTime', 'warnings'];
+
+function appendScoreHistory({ todayStr, rawScore, shownScore, capped, cap, worst, parsedWarnings }) {
   try {
-    const cappedWorst = worst ? Math.min(worst.score, cap) : '';
     const warningNames = (parsedWarnings?.items ?? []).map(w => w.name).join('/');
     const csvEscape = v => `"${String(v).replace(/"/g, '""')}"`;
-    const row = [todayStr, score ?? '', capped ? 'yes' : '', cappedWorst, worst?.time ?? '', warningNames]
-      .map(csvEscape).join(',') + '\n';
+    const row = [
+      todayStr,
+      rawScore ?? '',                                        // 素のモデル出力
+      capped ? 'yes' : '',
+      worst?.score ?? '',                                    // 日中の最低も素の値
+      worst?.time ?? '',
+      warningNames,
+      shownScore ?? '',                                      // メールに出した値
+      cap,                                                   // 適用した上限（無ければ10）
+    ].map(csvEscape).join(',') + '\n';
 
     if (!fs.existsSync(SCORE_HISTORY_CSV)) {
-      const header = ['date', 'score5am', 'capped', 'scoreWorst716', 'worstTime', 'warnings'].join(',') + '\n';
-      fs.writeFileSync(SCORE_HISTORY_CSV, header + row);
+      fs.writeFileSync(SCORE_HISTORY_CSV, CSV_COLUMNS.join(',') + '\n' + row);
       return;
     }
     // 同じ日付の行がすでにあれば追記しない（同日の再実行対策）
     const existing = fs.readFileSync(SCORE_HISTORY_CSV, 'utf8');
     if (existing.includes(`\n"${todayStr}"`)) return;
+
+    // 列を増やしたぶん見出しだけ足す。データ行には一切触らん
+    // （古い行は列が短いまま＝「その頃は記録しとらんかった」という事実をそのまま残す）
+    const firstLine = existing.split('\n', 1)[0];
+    if (firstLine === CSV_COLUMNS_OLD.join(',')) {
+      fs.writeFileSync(SCORE_HISTORY_CSV, CSV_COLUMNS.join(',') + existing.slice(firstLine.length));
+    }
     fs.appendFileSync(SCORE_HISTORY_CSV, row);
   } catch (err) {
     console.error('⚠️ スコア履歴のCSV記録に失敗（メール送信には影響なし）:', err.message);
@@ -292,12 +332,19 @@ function appendScoreHistory({ todayStr, score, capped, cap, worst, parsedWarning
 }
 
 // ── ポイント別コンディション欄を生成 ───────────────────────
+const DIVE_POINTS_HEAD = '\n━━━ ポイント別コンディション（優先度順） ━━━\n';
+
 function buildDivePointsSection(divePoints, weather, parsedWarnings) {
-  if (!divePoints || !Array.isArray(divePoints)) return '';
+  // 見出しごと消すと「今日はたまたま省略された」のか「取得に失敗した」のか判別できん。
+  // 警報・台風セクションと同じく、取得失敗も正直に書く（2026-08-25 レビュー）
+  if (!divePoints || !Array.isArray(divePoints)) {
+    return `${DIVE_POINTS_HEAD}⚠️ ポイント別データを取得できませんでした\n→ 最新は https://www.jma.go.jp/bosai/ で確認してください\n`;
+  }
 
   // 欠損は埋めず判定不能に落とす（webと同じフェイルセーフ。2026-07-19 評議会）
-  const windSpeed   = weather.current?.wind_speed_10m;   // m/s（APIで指定済み）
-  const weatherCode = weather.current?.weathercode;
+  const fresh       = isCurrentFresh(weather.current?.time);
+  const windSpeed   = fresh ? weather.current.wind_speed_10m : undefined;   // m/s（APIで指定済み）
+  const weatherCode = fresh ? weather.current.weathercode    : undefined;
 
   const lines = DIVE_POINTS.map((point, i) => {
     const hourly = divePoints[i]?.hourly;
@@ -323,16 +370,14 @@ function buildDivePointsSection(divePoints, weather, parsedWarnings) {
     return `🤿 ${point.name}:  ${waveStr} ${swellStr} ${curStr}  ${scoreStr}`;
   });
 
-  return `
-━━━ ポイント別コンディション（優先度順） ━━━
-${lines.join('\n')}
-`;
+  return `${DIVE_POINTS_HEAD}${lines.join('\n')}\n`;
 }
 
 // ── メール本文を生成 ───────────────────────────────────────
 function buildEmailBody({ score, capped = false, weather, naha, route, kerama, divePoints, warningsJson, parsedWarnings, todayStr, hIdx = -1, worst = null, cap = 10, typhoons = null, tcOutlook = null }) {
-  const windMs   = weather.current?.wind_speed_10m != null ? weather.current.wind_speed_10m.toFixed(1) : '--';
-  const windDeg  = weather.current?.wind_direction_10m;
+  const curFresh = isCurrentFresh(weather.current?.time);
+  const windMs   = curFresh && weather.current.wind_speed_10m != null ? weather.current.wind_speed_10m.toFixed(1) : '--';
+  const windDeg  = curFresh ? weather.current.wind_direction_10m : undefined;
   const windDir  = windDeg != null ? degToCompass(windDeg) : '';
 
   // 那覇・航路は取得失敗（null）でもメール全体は止めず -- で縮退する
@@ -343,21 +388,11 @@ function buildEmailBody({ score, capped = false, weather, naha, route, kerama, d
   const keramaWave = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx]?.toFixed(1) ?? '--' : '--';
   const sst        = hIdx >= 0 ? kerama.hourly.sea_surface_temperature?.[hIdx]?.toFixed(1) ?? '--' : '--';
 
-  // 潮汐（検出も上げ潮・下げ潮の算出もアプリ側 js/score.js と共用。自前コピーを置かない）
-  //
-  // 今日ぶんだけを渡すと、23時のピークは「次の値」が無いため判定できずに落ちる。
-  // アプリは48時間ぶんを渡してから今日で絞っとるので、同じデータでもメールだけ
-  // 潮の数が少なくなっとった（2026-08-24: アプリ 干潮2つ / メール1つ）。48時間に揃える。
+  // 潮汐は窓の作り方も検出も js/score.js の tidePeaksForDay に集約（自前コピーを置かない）。
+  // 窓を別々に書いて2回やらかしとる: 23時の干潮が落ちる（8/24）／0時のピークが落ちる（8/25）
   const peakTimes   = kerama.hourly.time;
   const peakHeights = kerama.hourly.sea_level_height_msl ?? [];
-  const tideIdx = peakTimes.reduce((acc, t, i) => {
-    if (t.slice(0, 10) >= todayStr) acc.push(i);
-    return acc;
-  }, []).slice(0, 48);
-  const todayPeaks = findTidePeaks(
-    tideIdx.map(i => peakTimes[i]),
-    tideIdx.map(i => peakHeights[i]),
-  ).filter(p => p.time.startsWith(todayStr));
+  const todayPeaks  = tidePeaksForDay(peakTimes, peakHeights, todayStr);
   const highs = todayPeaks.filter(p => p.type === 'high');
   const lows  = todayPeaks.filter(p => p.type === 'low');
 
@@ -375,9 +410,11 @@ function buildEmailBody({ score, capped = false, weather, naha, route, kerama, d
     const hr = parseInt(t.slice(11, 13));
     if (hr < 7 || hr > 16) return acc;
     const mIdx = kerama.hourly.time.indexOf(t);
-    const wave = mIdx >= 0 ? kerama.hourly.wave_height[mIdx]?.toFixed(1) : '--';
+    // ?? '--' が無いと、値が null の時間に「undefined℃」「風undefinedm/s」がそのまま
+    // メールで届く（Open-Meteo はモデルが持たん変数を全 null 配列で返す）
+    const wave = (mIdx >= 0 ? kerama.hourly.wave_height?.[mIdx]?.toFixed(1) : null) ?? '--';
     const dir  = wHDirs?.[i] != null ? degToCompass(wHDirs[i]) : '';
-    acc.push(`  ${t.slice(11,16)}  ${wTemps[i]?.toFixed(0)}℃  風${wWinds[i]?.toFixed(1)}m/s(${dir})  波${wave}m`);
+    acc.push(`  ${t.slice(11,16)}  ${wTemps[i]?.toFixed(0) ?? '--'}℃  風${wWinds[i]?.toFixed(1) ?? '--'}m/s(${dir})  波${wave}m`);
     return acc;
   }, []);
 
@@ -535,11 +572,14 @@ async function main() {
   // 欠損を良好値（波1.0m等）で埋めるフォールバックは廃止（2026-07-19 評議会 裁可項目1）
   const hIdx = findCurrentHourIndex(kerama.hourly.time ?? []);
   const currentWave = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx] : undefined;
-  const currentWind = weather.current?.wind_speed_10m;   // m/s（APIで指定済み）
+  // 天気APIの current が凍結しとる場合、古い凪の風と最新の波を合成して満点が出る。
+  // 海況と同じく時刻を検証してから使う（アプリ側 js/app.js と同じルール）
+  const weatherFresh = isCurrentFresh(weather.current?.time);
+  const currentWind = weatherFresh ? weather.current.wind_speed_10m : undefined;   // m/s（APIで指定済み）
   const rawScore = calcScore({
     waveHeight:  currentWave,
     windSpeed:   currentWind,
-    weatherCode: weather.current?.weathercode,
+    weatherCode: weatherFresh ? weather.current.weathercode : undefined,
     swellPeriod: hIdx >= 0 ? kerama.hourly.swell_wave_period?.[hIdx] : undefined,
   });
   // 気象庁の警報・注意報が発表中はスコアに上限（webと同じルール）
@@ -567,8 +607,10 @@ async function main() {
     return;
   }
 
-  // CSVには上限を掛けん素の値を記録し続ける（2026-07-23からの33日分と系列をそろえるため）
-  appendScoreHistory({ todayStr, score, capped, cap, worst, parsedWarnings });
+  // CSVには上限を掛けん素の値を記録する。以前はコメントだけがそう書いてあって、
+  // 実際は上限つきの score を渡しとった（2026-08-25 レビューで発覚。8/6 の score5am=3 は
+  // 波浪警報の上限そのもので、モデルの出力やなかった）。見せた値は scoreShown 列に残す
+  appendScoreHistory({ todayStr, rawScore, shownScore: score, capped, cap, worst, parsedWarnings });
 
   await sendMail(
     `🌊 今日の慶良間 コンディション ${score != null ? `${score} out of 10` : '判定不能'} ／ ${dateLabelJst()}`,

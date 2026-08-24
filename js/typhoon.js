@@ -52,6 +52,7 @@ function normalizeBlock(b) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
   const stormKm = firstRangeKm(b.stormWarning);
+  const galeKm  = firstRangeKm(b.galeWarning);
   const km = distanceKm(KERAMA.lat, KERAMA.lon, lat, lon);
 
   return {
@@ -64,11 +65,12 @@ function normalizeBlock(b) {
     windMs:       b.maximumWind?.sustained?.['m/s'] != null ? Number(b.maximumWind.sustained['m/s']) : null,
     gustMs:       b.maximumWind?.gust?.['m/s']      != null ? Number(b.maximumWind.gust['m/s'])      : null,
     stormRadiusKm: stormKm,
-    galeRadiusKm:  firstRangeKm(b.galeWarning),
+    galeRadiusKm:  galeKm,
     // 予報位置のばらつき。地図に描かんと進路が確定しとるように見える
     probabilityCircleKm: b.probabilityCircleRadius?.km ?? null,
-    // 暴風域の半径より内側に慶良間が入るか（確率XMLが無いときの代替判定）
+    // 暴風域・強風域の半径より内側に慶良間が入るか（確率XMLが無いときの代替判定）
     insideStorm:  stormKm != null ? km <= stormKm : null,
+    insideGale:   galeKm  != null ? km <= galeKm  : null,
     category:     b.category?.jp ?? null,
     course:       b.course ?? null,
     location:     b.location ?? null,
@@ -100,6 +102,9 @@ export function parseSpecifications(json, id = null) {
     forecasts: blocks.filter(b => !b.isAnalysis),
     // 予報のどこかで暴風域に入るか＋そのうち最も近い距離
     everInsideStorm: blocks.some(b => b.insideStorm === true),
+    everInsideGale:  blocks.some(b => b.insideGale === true),
+    // 確率XMLを取りに行く前の初期値。attachProbabilities が 'ok'/'unavailable' に更新する
+    probabilityStatus: 'far',
     nearestKm: blocks.length ? Math.min(...blocks.map(b => b.distanceKm)) : null,
   };
 }
@@ -170,10 +175,16 @@ export async function fetchTyphoons() {
     .filter(r => r.status === 'fulfilled' && r.value)
     .map(r => r.value);
 
-  // 1つでも取れんかったら、その事実を隠さず unavailable として扱う
   if (!typhoons.length) return { status: 'unavailable', typhoons: [] };
 
   await attachProbabilities(typhoons);
+
+  // 一部だけ落ちた場合を 'ok' に混ぜると、慶良間に接近しとる1つだけが取得失敗した日に
+  // 「遠い台風だけが並んで影響なし」に見える（2026-08-25 レビューで発覚。旧コメントは
+  // 「1つでも取れんかったら unavailable」と書いてあったが、実装は全滅時しか見とらんかった）。
+  // 残りは表示しつつ、欠けとる事実を件数で持ち上げる
+  const missing = settled.length - typhoons.length;
+  if (missing > 0) return { status: 'partial', typhoons, missing };
   return { status: 'ok', typhoons };
 }
 
@@ -181,6 +192,9 @@ export async function fetchTyphoons() {
 async function attachProbabilities(typhoons) {
   const near = typhoons.filter(t => t.nearestKm != null && t.nearestKm <= PROBABILITY_FETCH_KM);
   if (!near.length) return;
+  // 取りに行く対象は、取れるまで「不明」。この印が無いと、フィードが落ちたときの
+  // 「確率0%」と「確率を取れとらん」を呼び出し側が区別できん
+  for (const t of near) t.probabilityStatus = 'unavailable';
 
   let urls;
   try {
@@ -213,6 +227,7 @@ async function attachProbabilities(typhoons) {
       t.probability = p.series;
       t.probabilityBaseTime = p.baseTime;
       t.probabilitySummary = summarizeProbability(p.series);
+      t.probabilityStatus = 'ok';
     }
   }
 }
@@ -224,16 +239,32 @@ function jstDate(d) {
   return d.toLocaleDateString('sv', { timeZone: 'Asia/Tokyo' });
 }
 
+// 慶良間に効きうる距離におりながら、公式の確率が取れとらん台風があるか。
+// 「確率0%」と「確率不明」を取り違えて安全宣言を出さんための判定
+export function probabilityMissing(typhoons) {
+  return (typhoons ?? []).some(t => t.probabilityStatus === 'unavailable');
+}
+
 // 画面に出す1つを選ぶ。慶良間への確率が最大のもの → 同点なら近いもの。
-// 全部0%（＝今日の判断に効かん）なら null を返し、呼び出し側はチップだけ出す
+// 効く台風が無ければ null を返し、呼び出し側はチップだけ出す。
+//
+// 確率XMLが取れんかった台風を「0%」と同じ扱いにすると、慶良間まで199kmで
+// 気象庁の予報が暴風域の内側を通しとる台風でも null になり、メールが
+// 「慶良間が暴風域に入る予測はありません」と安全側を断定する（2026-08-25 実測で再現）。
+// 確率が不明なときは、気象庁自身が出しとる暴風域・強風域の半径で代替判定する
+// （自前のしきい値を作らんため、判断の根拠は必ず気象庁の数字に置く）。
 export function pickPrimary(typhoons) {
   const scored = (typhoons ?? []).map(t => ({
     t,
     pct: t.probabilitySummary?.max ?? 0,
+    // 確率不明 かつ 予報のどこかで慶良間が暴風域／強風域の内側に入る
+    byRadius: t.probabilityStatus === 'unavailable' &&
+              (t.everInsideStorm === true || t.everInsideGale === true),
     km:  t.nearestKm ?? Infinity,
   }));
-  const hot = scored.filter(s => s.pct > 0);
+  const hot = scored.filter(s => s.pct > 0 || s.byRadius);
   if (!hot.length) return null;
+  // 確率が分かっとるものを先に出す（不明なものより情報量が多い）。不明どうしは近い順
   hot.sort((a, b) => b.pct - a.pct || a.km - b.km);
   return hot[0].t;
 }

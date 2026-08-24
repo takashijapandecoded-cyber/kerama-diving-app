@@ -1,10 +1,17 @@
-import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods, findCurrentHourIndex, warningScoreCap } from './score.js';
+import { calcScore, scoreLabel, calendarIcon, tideWindow, tidePeaksForDay, tidePeriods, findCurrentHourIndex, warningScoreCap, parseApiTime } from './score.js';
 import { getWeatherIcon } from '../assets/weather-icons.js';
 import { CALENDAR_THRESHOLD, DIVE_POINTS } from './config.js';
-import { approachWindow, probabilityCutoffHour } from './typhoon.js';
+import { approachWindow, probabilityCutoffHour, probabilityMissing } from './typhoon.js';
 
 // SVGリングの円周（r=80）
 const CIRCUMFERENCE = 2 * Math.PI * 80; // ≈ 502.65
+
+// 数値の整形。欠損(null)で toFixed を呼ぶと TypeError で renderAll ごと止まり、
+// 以降のポイント別・潮汐・週間・時刻別の描画が丸ごと消える（2026-08-25 レビュー）。
+// 「値が無いところだけ -- になる」で済ませるため、必ずここを通す
+function num(v, digits, unit = '') {
+  return Number.isFinite(v) ? `${v.toFixed(digits)}${unit}` : '--';
+}
 
 // 風向（度数）→ 8方位ラベル
 function degToCompass(deg) {
@@ -146,17 +153,20 @@ export function renderConditionCards(weather, naha, route, kerama) {
   // 現在時刻がデータに無い（idx=-1、古い・凍結）場合は値を出さず -- にする
   // 那覇港 (天気データ + 那覇海況)
   const nahaIdx = naha ? findCurrentHourIndex(naha.hourly.time) : -1;
+  const windStr = Number.isFinite(weather?.current?.wind_speed_10m)
+    ? `${weather.current.wind_speed_10m.toFixed(1)} m/s ${compass}`.trim()
+    : '--';
   setCardData('naha', {
-    wave:    naha && nahaIdx >= 0 ? `${naha.hourly.wave_height[nahaIdx].toFixed(1)} m` : '--',
-    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(1)} m/s ${compass}`.trim() : '--',
+    wave:    nahaIdx >= 0 ? num(naha.hourly.wave_height?.[nahaIdx], 1, ' m') : '--',
+    wind:    windStr,
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
   // 航路中間
   const routeIdx = route ? findCurrentHourIndex(route.hourly.time) : -1;
   setCardData('route', {
-    wave:    route && routeIdx >= 0 ? `${route.hourly.wave_height[routeIdx].toFixed(1)} m` : '--',
-    wind:    weather?.current?.wind_speed_10m != null ? `${weather.current.wind_speed_10m.toFixed(1)} m/s ${compass}`.trim() : '--',
+    wave:    routeIdx >= 0 ? num(route.hourly.wave_height?.[routeIdx], 1, ' m') : '--',
+    wind:    windStr,
     weather: wIcon   ? `${wIcon.emoji} ${wIcon.label}` : '--',
   });
 
@@ -165,9 +175,9 @@ export function renderConditionCards(weather, naha, route, kerama) {
   const sst   = keramaIdx >= 0 ? kerama.hourly.sea_surface_temperature?.[keramaIdx] : null;
   const swell = keramaIdx >= 0 ? kerama.hourly.swell_wave_period?.[keramaIdx] : null;
   setCardData('kerama', {
-    wave:  kerama && keramaIdx >= 0 ? `${kerama.hourly.wave_height[keramaIdx].toFixed(1)} m` : '--',
-    swell: swell != null ? `${swell.toFixed(0)} s` : '--',
-    sst:   sst   != null ? `${sst.toFixed(1)} ℃` : '--',
+    wave:  keramaIdx >= 0 ? num(kerama.hourly.wave_height?.[keramaIdx], 1, ' m') : '--',
+    swell: num(swell, 0, ' s'),
+    sst:   num(sst,   1, ' ℃'),
   });
 
   // 風向アドバイス（慶良間への影響）
@@ -203,19 +213,33 @@ function typhoonChips(result) {
   const list = result.typhoons ?? [];
   if (!list.length) return '<span class="warn-chip warn-none">🌀 台風なし</span>';
 
+  // 一部だけ取得できとらん場合、残りが遠い台風ばかりやと「影響なし」に見える。
+  // 欠けとる事実を必ず並べる（2026-08-25 レビュー）
+  const partial = result.status === 'partial'
+    ? `<span class="warn-chip warn-unavailable">🌀 ${result.missing}つ分の詳細を取得できません</span>` : '';
+
   const primary = result.primary;
   const label = tcShort;
   if (!primary) {
-    // 全部0% = 今日の判断に効かん。名前を並べず件数にまとめる
+    // 確率が取れた上で全部0%のときだけ「影響なし」と言い切れる。
+    // 確率が取れとらんときは、半径では効かんと分かっても言い切らん
+    if (probabilityMissing(list)) {
+      return `<span class="warn-chip warn-unavailable">🌀 暴風域の確率を取得できません（${list.length}つ発生中）</span>` + partial;
+    }
     const head = `<span class="warn-chip warn-tc">🌀 ${label(list[0])} 影響なし</span>`;
     const rest = list.length > 1
       ? `<span class="warn-chip warn-tc">ほか${list.length - 1}つ 影響なし</span>` : '';
-    return head + rest;
+    return head + rest + partial;
   }
-  const pct  = primary.probabilitySummary?.max ?? 0;
+  // primary 以外の確率も取れとらんなら「影響なし」と断定できん
+  const othersUnknown = probabilityMissing(list.filter(t => t !== primary));
   const rest = list.length > 1
-    ? `<span class="warn-chip warn-tc">ほか${list.length - 1}つ 影響なし</span>` : '';
-  return `<span class="warn-chip warn-warning">🌀 ${label(primary)} 暴風域 ${pct}%</span>${rest}`;
+    ? `<span class="warn-chip ${othersUnknown ? 'warn-unavailable' : 'warn-tc'}">ほか${list.length - 1}つ ${othersUnknown ? '確率不明' : '影響なし'}</span>` : '';
+  // 確率が取れとらんのに「暴風域 0%」と出すと、実際は接近しとっても安全に見える
+  const body = primary.probabilityStatus === 'unavailable'
+    ? `<span class="warn-chip warn-unavailable">🌀 ${label(primary)} 暴風域の確率を取得できません</span>`
+    : `<span class="warn-chip warn-warning">🌀 ${label(primary)} 暴風域 ${primary.probabilitySummary?.max ?? 0}%</span>`;
+  return body + rest + partial;
 }
 
 export function renderWarningChips(warnings, typhoonResult = null) {
@@ -343,9 +367,12 @@ export function renderCalendar(weather, kerama) {
     });
 
     const icon = calendarIcon(score);
+    // timeZone を指定せんと端末のタイムゾーンで曜日・日付が出る。UTC端末では
+    // 8/25 が「月 24」になり、スコアが1日ずれた枠に貼り付く（2026-08-25 実測）。
+    // 日付の数字は文字列から直に取る（Date を経由させんのがいちばん確実）
     const date = new Date(dateStr + 'T00:00:00+09:00');
-    const dayLabel = date.toLocaleDateString('ja-JP', { weekday: 'short' });
-    const dayNum   = date.getDate();
+    const dayLabel = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', weekday: 'short' });
+    const dayNum   = Number(dateStr.slice(8, 10));
 
     return { dayLabel, dayNum, score, icon };
   });
@@ -384,22 +411,16 @@ export function renderTideChart(kerama) {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   }).replace(/\//g, '-');
 
-  const indices = allTimes.reduce((acc, t, i) => {
-    if (t >= todayStr.slice(0, 10)) acc.push(i);
-    return acc;
-  }, []).slice(0, 48);
+  // 窓の作り方も検出も js/score.js が唯一の正（メールと同じ関数を通す）
+  const today   = todayStr.slice(0, 10);
+  const indices = tideWindow(allTimes, today).display;
+  if (!indices.length) return;
 
   const labels  = indices.map(i => allTimes[i].slice(11, 16));   // HH:MM
   const heights = indices.map(i => allHeights[i]);
 
-  // 満潮・干潮検出
-  const peaks = findTidePeaks(
-    indices.map(i => allTimes[i]),
-    heights
-  );
-
   // 今日の満潮・干潮を表示
-  const tPeaks  = todayPeaks(peaks);
+  const tPeaks  = tidePeaksForDay(allTimes, allHeights, today);
   const highs   = tPeaks.filter(p => p.type === 'high');
   const lows    = tPeaks.filter(p => p.type === 'low');
   const fmtTime = t => t.slice(11, 16);
@@ -422,13 +443,6 @@ export function renderTideChart(kerama) {
   // Chart.js グラフ
   const ctx = document.getElementById('tide-chart').getContext('2d');
   if (tideChart) tideChart.destroy();
-
-  // ピーク注釈用データセット
-  const pointStyles = heights.map((_, idx) => {
-    const t = indices[idx];
-    const match = peaks.find(p => p.time === allTimes[t]);
-    return match ? (match.type === 'high' ? '▲' : '▽') : '';
-  });
 
   tideChart = new Chart(ctx, {
     type: 'line',
@@ -519,7 +533,8 @@ export function renderForecastTable(weather, kerama, warnings) {
       swellPeriod: 8,
     });
     const score = rawScore == null ? null : Math.min(rawScore, cap);
-    const icon = getWeatherIcon(wCodes[i] ?? 0);
+    // ?? 0 やと欠損が「快晴」になる。renderConditionCards と同じく欠損は -- に倒す
+    const icon = Number.isFinite(wCodes[i]) ? getWeatherIcon(wCodes[i]) : null;
     const { color } = scoreLabel(score);
 
     const compass = wDirs?.[i] != null ? degToCompass(wDirs[i]) : '';
@@ -545,11 +560,17 @@ export function renderForecastTable(weather, kerama, warnings) {
 
 // フッターにはデータ側の時刻を出す。以前は描画した瞬間の時計を「最終更新」と
 // 表示しとったため、古いデータでも常に新鮮に見えとった（2026-07-19 評議会 裁可項目1）
+// Open-Meteo の current.time はオフセットを持たん素のJST文字列。素直に new Date() すると
+// 端末のタイムゾーンで解釈されて二重にずれる（UTC端末で 00:00 が 09:00 JST と出とった）
+function apiTimeLabel(t) {
+  const ms = parseApiTime(t);
+  return ms == null
+    ? '--'
+    : new Date(ms).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) + ' JST';
+}
+
 export function renderFooter(weather) {
-  const t = weather?.current?.time;
-  const str = t
-    ? new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) + ' JST'
-    : '--';
+  const str = apiTimeLabel(weather?.current?.time);
   document.getElementById('last-updated').textContent = `データ時刻: ${str}（予報の基準時刻）`;
 }
 
@@ -558,10 +579,7 @@ export function renderFooter(weather) {
 export function renderDataInfo(weather) {
   const el = document.getElementById('data-info');
   if (!el) return;
-  const t = weather?.current?.time;
-  const timeStr = t
-    ? new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) + ' JST'
-    : '--';
+  const timeStr = apiTimeLabel(weather?.current?.time);
   el.innerHTML = `📡 ${timeStr}時点 | JMA予報 · Marine API · 気象庁警報 · NASA EPIC`;
 }
 
@@ -739,9 +757,16 @@ export function renderTyphoon(result, outlook) {
   const cutoff = probabilityCutoffHour(typhoon);
   const cutoffLabel = cutoff != null ? `${cutoff}時` : '';
 
-  const lead = hit
-    ? `${tcDayLabel(hit.date)}${cutoffLabel}までに暴風域に入る確率 ${hit.percent}%`
-    : `4日先までに暴風域に入る確率 最大 ${maxPct}%`;
+  // 確率が取れとらんときに「最大 0%」と書くと、気象庁の予報が暴風域の内側を
+  // 通しとっても安全に読める。数字を出さず、代替判定の根拠だけを書く
+  const unknownPct = typhoon.probabilityStatus === 'unavailable';
+  const lead = unknownPct
+    ? '⚠️ 暴風域に入る確率を取得できていません'
+      + (typhoon.everInsideStorm ? '（気象庁の予報では慶良間が暴風域の内側に入る見込みです）'
+        : typhoon.everInsideGale ? '（気象庁の予報では慶良間が強風域の内側に入る見込みです）' : '')
+    : hit
+      ? `${tcDayLabel(hit.date)}${cutoffLabel}までに暴風域に入る確率 ${hit.percent}%`
+      : `4日先までに暴風域に入る確率 最大 ${maxPct}%`;
   // 最接近は1点で断定せず幅で出す（予報が24時間刻みになる区間で谷を取り逃すため）
   const win = approachWindow(typhoon);
   // スマホ幅では折り返すため、文節ごとに nowrap で括る（「接／近」の泣き別れ防止）
@@ -764,11 +789,12 @@ export function renderTyphoon(result, outlook) {
           <div class="card-title">🌀 ${esc(tcTitle(typhoon))}</div>
           <div class="card-subtitle">${sub}</div>
         </div>
-        <span class="score-chip" style="background:${maxPct >= 50 ? 'var(--danger)' : 'var(--caution)'}">${maxPct}%</span>
+        <span class="score-chip" style="background:${unknownPct || maxPct >= 50 ? 'var(--danger)' : 'var(--caution)'}">${unknownPct ? '—' : maxPct + '%'}</span>
       </div>
       <div class="tc-grid">${cells}</div>
       <div class="tc-grid-cap">上段＝その日の${cutoffLabel || '同時刻'}までに暴風域に入る確率（慶良間・粟国諸島）／ 下段＝慶良間沖の最大波高</div>
-      <div class="tc-note ${maxPct >= 50 ? 'hot' : ''}">${lead}${nearestLine}</div>
+      <div class="tc-note ${unknownPct || maxPct >= 50 ? 'hot' : ''}">${lead}${nearestLine}</div>
+      ${result.status === 'partial' ? `<div class="tc-note">⚠️ 発生中の台風のうち${result.missing}つは詳細を取得できていません。気象庁でご確認ください。</div>` : ''}
       ${buildTyphoonDetail(typhoon)}
       ${stale ? '<div class="tc-note">⚠️ 気象庁の発表から時間が経っています。最新は気象庁でご確認ください。</div>' : ''}
       <div class="tc-src">気象庁 ${issued ? esc(issued.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : '--'} 発表</div>
