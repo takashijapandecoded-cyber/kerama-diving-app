@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DIVE_POINTS } from '../js/config.js';
-import { calcScore, findCurrentHourIndex, warningScoreCap, calendarIcon } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
+import { calcScore, findCurrentHourIndex, warningScoreCap, calendarIcon, findTidePeaks, tidePeriods } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
-import { fetchTyphoons, pickPrimary, dailyOutlook, waveMaxByDate } from '../js/typhoon.js'; // 台風もアプリと同じ判定を使う
+import { fetchTyphoons, pickPrimary, dailyOutlook, waveMaxByDate, approachWindow, probabilityCutoffHour } from '../js/typhoon.js'; // 台風もアプリと同じ判定を使う
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
 const GMAIL_USER     = process.env.GMAIL_USER;
@@ -134,17 +134,6 @@ function scoreText(score) {
 }
 
 // ── 潮汐ピーク検出 ─────────────────────────────────────────
-function findPeaks(times, heights) {
-  const peaks = [];
-  for (let i = 1; i < heights.length - 1; i++) {
-    if (heights[i] > heights[i-1] && heights[i] > heights[i+1])
-      peaks.push({ time: times[i], h: heights[i], type: 'high' });
-    else if (heights[i] < heights[i-1] && heights[i] < heights[i+1])
-      peaks.push({ time: times[i], h: heights[i], type: 'low' });
-  }
-  return peaks;
-}
-
 function fmtTime(isoStr) { return isoStr.slice(11, 16); }
 
 // ── 一度きりのお知らせ（アプリ側の js/notice.js とセット）──────────
@@ -171,6 +160,14 @@ function tcNo(t) {
   return n ? `台風${n}号` : (t?.category ?? '熱帯低気圧');
 }
 
+// 予報点の時刻ラベル。M/D(曜)HH時（最接近を「幅」で書くために時刻まで出す）
+function tcTime(iso) {
+  const d = new Date(iso);
+  const date = d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' });
+  const hour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', hour12: false }).format(d);
+  return `${date}${Number(hour)}時`;
+}
+
 function buildTyphoonSection(result, outlook) {
   const head = '━━━ 台風 ━━━';
   if (!result || result.status === 'unavailable') {
@@ -194,13 +191,14 @@ function buildTyphoonSection(result, outlook) {
 
   const hit = (outlook ?? []).find(d => d.percent != null && d.percent >= 50);
   const a = primary.analysis;
+  const cutoff = probabilityCutoffHour(primary);
+  const cutoffLabel = cutoff != null ? `${cutoff}時` : '';
   const lead = hit
-    ? `⚠️ ${tcDay(hit)} までに暴風域に入る確率 ${hit.percent}%`
+    ? `⚠️ ${tcDay(hit)}${cutoffLabel} までに暴風域に入る確率 ${hit.percent}%`
     : `暴風域に入る確率 最大 ${primary.probabilitySummary?.max ?? 0}%`;
-  const nearest = [primary.analysis, ...primary.forecasts]
-    .filter(Boolean).reduce((m, b) => (m == null || b.distanceKm < m.distanceKm ? b : m), null);
-  const nearestLine = nearest && !nearest.isAnalysis
-    ? `\n最も近づくのは ${new Date(nearest.validTime).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' })}・${nearest.distanceKm}km`
+  const win = approachWindow(primary);
+  const nearestLine = win
+    ? `\n${tcTime(win.fromTime)}〜${tcTime(win.toTime)} にかけて ${win.withinKm}km以内まで接近`
     : '';
 
   return `${head}
@@ -208,7 +206,7 @@ function buildTyphoonSection(result, outlook) {
 ${lead}${nearestLine}
 
 ${days}
-  ※ 上の確率は「その日までに慶良間・粟国諸島が暴風域に入る」累積値です（気象庁）
+  ※ 上の確率は「その日の${cutoffLabel || '同時刻'}までに慶良間・粟国諸島が暴風域に入る」累積値です（気象庁）${win?.coarse ? '\n  ※ 接近の時刻に幅があるのは、この先の予報が24時間刻みになるためです' : ''}
 ${list.length > 1 ? `  ※ ほか${list.length - 1}つ発生中ですが、慶良間への影響はありません\n` : ''}`;
 }
 
@@ -343,27 +341,25 @@ function buildEmailBody({ score, capped = false, weather, naha, route, kerama, d
   const keramaWave = hIdx >= 0 ? kerama.hourly.wave_height?.[hIdx]?.toFixed(1) ?? '--' : '--';
   const sst        = hIdx >= 0 ? kerama.hourly.sea_surface_temperature?.[hIdx]?.toFixed(1) ?? '--' : '--';
 
-  // 潮汐
+  // 潮汐（検出も上げ潮・下げ潮の算出もアプリ側 js/score.js と共用。自前コピーを置かない）
+  //
+  // 今日ぶんだけを渡すと、23時のピークは「次の値」が無いため判定できずに落ちる。
+  // アプリは48時間ぶんを渡してから今日で絞っとるので、同じデータでもメールだけ
+  // 潮の数が少なくなっとった（2026-08-24: アプリ 干潮2つ / メール1つ）。48時間に揃える。
   const peakTimes   = kerama.hourly.time;
   const peakHeights = kerama.hourly.sea_level_height_msl ?? [];
-  const todayPeaks  = findPeaks(
-    peakTimes.filter(t => t.startsWith(todayStr)),
-    peakTimes.reduce((acc, t, i) => { if (t.startsWith(todayStr)) acc.push(peakHeights[i]); return acc; }, [])
-  );
+  const tideIdx = peakTimes.reduce((acc, t, i) => {
+    if (t.slice(0, 10) >= todayStr) acc.push(i);
+    return acc;
+  }, []).slice(0, 48);
+  const todayPeaks = findTidePeaks(
+    tideIdx.map(i => peakTimes[i]),
+    tideIdx.map(i => peakHeights[i]),
+  ).filter(p => p.time.startsWith(todayStr));
   const highs = todayPeaks.filter(p => p.type === 'high');
   const lows  = todayPeaks.filter(p => p.type === 'low');
 
-  // 上げ潮・下げ潮の時間帯を連続するピークペアから算出
-  const tPeriods = [];
-  for (let i = 0; i < todayPeaks.length - 1; i++) {
-    const from = todayPeaks[i];
-    const to   = todayPeaks[i + 1];
-    if (from.type === 'low' && to.type === 'high') {
-      tPeriods.push({ type: 'rising',  from: fmtTime(from.time), to: fmtTime(to.time) });
-    } else if (from.type === 'high' && to.type === 'low') {
-      tPeriods.push({ type: 'falling', from: fmtTime(from.time), to: fmtTime(to.time) });
-    }
-  }
+  const tPeriods   = tidePeriods(todayPeaks);
   const risingStr  = tPeriods.filter(p => p.type === 'rising') .map(p => `${p.from}→${p.to}`).join(' / ') || '--';
   const fallingStr = tPeriods.filter(p => p.type === 'falling').map(p => `${p.from}→${p.to}`).join(' / ') || '--';
 
@@ -416,8 +412,8 @@ ${buildTyphoonSection(typhoons, tcOutlook)}
 🤿 慶良間沖:  波${keramaWave}m / 海水温${sst}℃
 ${buildDivePointsSection(divePoints, weather, parsedWarnings)}
 ━━━ 今日の潮汐（慶良間） ━━━
-🔼 満潮: ${highs.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
-🔽 干潮: ${lows.map(p => `${fmtTime(p.time)} (${p.h.toFixed(1)}m)`).join('  ') || '--'}
+🔼 満潮: ${highs.map(p => `${fmtTime(p.time)} (${p.height.toFixed(1)}m)`).join('  ') || '--'}
+🔽 干潮: ${lows.map(p => `${fmtTime(p.time)} (${p.height.toFixed(1)}m)`).join('  ') || '--'}
 🔼 上げ潮帯: ${risingStr}（干潮→満潮）
 🔽 下げ潮帯: ${fallingStr}（満潮→干潮）
 

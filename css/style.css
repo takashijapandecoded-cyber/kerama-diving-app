@@ -1233,3 +1233,6 @@ body {
   .tc-card { animation: none; }
   .tc-more > summary .arw { transition: none; }
 }
+
+/* 台風カードの接近行。文節の途中で泣き別れせんように */
+.tc-nowrap { white-space: nowrap; }

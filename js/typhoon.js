@@ -268,6 +268,52 @@ export function dailyOutlook(typhoon, waveByDate = {}, now = new Date(), days = 
   return out;
 }
 
+// 確率の基準時刻（TargetDateTime）の「時」をJSTで返す。取れんときは null。
+//
+// 気象庁の累積確率は「その日の24時まで」やなく「基準時刻と同じ時刻まで」の値。
+// 基準が21時なら「8/25 17%」は 8/25 21時までの17%であって、8/25いっぱいの値ではない。
+// 注釈にこの時刻を書かんと、読む側で丸1日ずれる（2026-08-24 実測で発覚）。
+export function probabilityCutoffHour(typhoon) {
+  const base = typhoon?.probabilityBaseTime ? new Date(typhoon.probabilityBaseTime) : null;
+  if (!base || Number.isNaN(base.getTime())) return null;
+  const h = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Tokyo', hour: '2-digit', hour12: false,
+  }).format(base);
+  return Number(h);
+}
+
+// 最接近を「幅」で返す。{ fromTime, toTime, withinKm, coarse } / 予報が無ければ null
+//
+// 予報点は24時間先までは3時間刻みやが、その先は24時間刻みに粗くなる。標本の最小値を
+// そのまま「最接近」として出すと、粗い区間に隠れた本当の谷を取り逃す。
+// 2026-08-24 の台風18号では 199km（8/25 21時）と出とったが、次の予報点との間を
+// 補間すると 8/26 07時ごろ 約130km で、69km も過大やった。
+//
+// 補間値は自前の推定になるため本文には出さん。代わりに
+//   ・最小の標本の前後の予報点で挟んだ「区間」
+//   ・距離は切り上げた「◯km以内」（標本の最小値は真の最接近以上なので上限として正しい）
+// を返す。
+export function approachWindow(typhoon) {
+  const blocks = (typhoon?.forecasts ?? []).filter(b => Number.isFinite(b?.distanceKm));
+  if (!blocks.length) return null;
+
+  let mi = 0;
+  for (let i = 1; i < blocks.length; i++) {
+    if (blocks[i].distanceKm < blocks[mi].distanceKm) mi = i;
+  }
+  const from = blocks[Math.max(0, mi - 1)];
+  const to   = blocks[Math.min(blocks.length - 1, mi + 1)];
+  const spanMs = new Date(to.validTime).getTime() - new Date(from.validTime).getTime();
+
+  return {
+    fromTime: from.validTime,
+    toTime:   to.validTime,
+    withinKm: Math.ceil(blocks[mi].distanceKm / 10) * 10,
+    // 前後が3時間刻みで詰まっとるなら幅を出す必要はない（予報が細かい区間）
+    coarse:   spanMs > 6 * 3600 * 1000,
+  };
+}
+
 // marine の hourly から日別の最大波高を作る（renderCalendar と同じ考え方）
 export function waveMaxByDate(marine) {
   const times = marine?.hourly?.time ?? [];

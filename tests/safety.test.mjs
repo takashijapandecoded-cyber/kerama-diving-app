@@ -4,14 +4,16 @@
 // スコア・警報は安全の中核ロジックのため、ここだけは「知らぬ間に挙動が変わる」を防ぐ
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcScore, warningScoreCap, scoreLabel, findCurrentHourIndex } from '../js/score.js';
+import { calcScore, warningScoreCap, scoreLabel, findCurrentHourIndex,
+         findTidePeaks, tidePeriods } from '../js/score.js';
 import { parseWarnings, feedIsAlive, fetchWarningsViaXml, pickLatestWarningXmlUrl } from '../js/warnings.js';
 import { WARNING_AREAS, DIVE_POINTS } from '../js/config.js';
 import { readFileSync } from 'node:fs';
 import { isWithinWindow } from '../js/notice.js';
 import { distanceKm, parseSpecifications, parseKeramaProbability,
          summarizeProbability, fetchTyphoons,
-         pickPrimary, dailyOutlook, waveMaxByDate } from '../js/typhoon.js';
+         pickPrimary, dailyOutlook, waveMaxByDate,
+         approachWindow, probabilityCutoffHour } from '../js/typhoon.js';
 
 test('欠損・異常値では絶対にスコアを出さない（誤GO防止）', () => {
   assert.equal(calcScore({}), null);
@@ -398,4 +400,115 @@ test('気象庁の台風番号 2618 は「18号」（2026年の第18号）', () 
   assert.equal(toNo('2601'), 1);
   assert.equal(toNo('d'), null);      // 熱帯低気圧は番号なし
   assert.equal(toNo(undefined), null);
+});
+
+// ── 潮汐（2026-08-24 発覚：頂点がフラットな日に満潮が1つも出んかった）──────
+
+// 2026-08-24 の慶良間の実データ（Open-Meteo）。朝も夕方も満潮が2時間フラット
+const TIDE_0824 = [
+  ['00:00',1.18],['01:00',1.29],['02:00',1.40],['03:00',1.48],['04:00',1.48],['05:00',1.39],
+  ['06:00',1.20],['07:00',0.96],['08:00',0.70],['09:00',0.50],['10:00',0.38],['11:00',0.37],
+  ['12:00',0.47],['13:00',0.66],['14:00',0.91],['15:00',1.17],['16:00',1.37],['17:00',1.47],
+  ['18:00',1.47],['19:00',1.39],['20:00',1.24],['21:00',1.09],['22:00',1.00],['23:00',0.99],
+];
+const tideTimes   = TIDE_0824.map(r => `2026-08-24T${r[0]}`);
+const tideHeights = TIDE_0824.map(r => r[1]);
+
+test('findTidePeaks: 頂点が2時間フラットでも満潮を取りこぼさない', () => {
+  const peaks = findTidePeaks(tideTimes, tideHeights);
+  const highs = peaks.filter(p => p.type === 'high');
+  const lows  = peaks.filter(p => p.type === 'low');
+  // 厳密な > だけの旧実装ではここが 0 やった（1.48,1.48 と 1.47,1.47 が両方落ちる）
+  assert.equal(highs.length, 2, '満潮は朝と夕の2回');
+  assert.equal(lows.length, 1);
+  // フラットな区間は中央の時刻を代表にする
+  assert.equal(highs[0].time, '2026-08-24T03:00');
+  assert.equal(highs[1].time, '2026-08-24T17:00');
+  assert.equal(lows[0].time,  '2026-08-24T11:00');
+});
+
+test('findTidePeaks: 満潮が拾えれば上げ潮帯・下げ潮帯も連鎖で出る', () => {
+  const periods = tidePeriods(findTidePeaks(tideTimes, tideHeights));
+  // 旧実装では満潮が消えてペアが作れず、両方とも空＝「--」表示になっとった
+  assert.deepEqual(periods.filter(p => p.type === 'falling'), [{ type: 'falling', from: '03:00', to: '11:00' }]);
+  assert.deepEqual(periods.filter(p => p.type === 'rising'),  [{ type: 'rising',  from: '11:00', to: '17:00' }]);
+});
+
+test('findTidePeaks: 尖った頂点は従来どおり1点で拾う（挙動を変えとらん）', () => {
+  const t = ['T0','T1','T2','T3','T4'];
+  const h = [1.0, 1.2, 1.5, 1.2, 1.0];
+  assert.deepEqual(findTidePeaks(t, h), [{ time: 'T2', height: 1.5, type: 'high' }]);
+});
+
+test('findTidePeaks: 欠損（null）が混ざっても落ちん', () => {
+  const t = ['T0','T1','T2','T3','T4'];
+  const h = [1.0, null, 1.5, null, 1.0];
+  assert.deepEqual(findTidePeaks(t, h), []);
+});
+
+test('findTidePeaks: 末尾のピークは翌日の値まで渡さんと拾えない（メールをアプリと揃えた理由）', () => {
+  // 23時の干潮は「次の値」＝翌日00時が要る。今日ぶんだけ渡すと落ちる
+  const onlyToday = findTidePeaks(tideTimes, tideHeights).filter(p => p.type === 'low');
+  assert.equal(onlyToday.length, 1, '今日ぶんだけでは 23:00 の干潮が落ちる');
+
+  const plusNextDay = findTidePeaks(
+    [...tideTimes, '2026-08-25T00:00'],
+    [...tideHeights, 1.06],
+  ).filter(p => p.time.startsWith('2026-08-24') && p.type === 'low');
+  assert.deepEqual(plusNextDay.map(p => p.time), ['2026-08-24T11:00', '2026-08-24T23:00']);
+});
+
+test('notify 側の潮汐は48時間窓で拾う（アプリと同じ数になること）', () => {
+  const src = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
+  assert.ok(/slice\(0, 48\)/.test(src), 'アプリ側 renderTideChart と同じ48時間窓にすること');
+  assert.ok(!/peakTimes\.filter\(t => t\.startsWith\(todayStr\)\)/.test(src),
+    '今日ぶんだけを渡すと末尾のピークが落ちる');
+});
+
+test('notify 側に潮汐の自前コピーを置かない（アプリと不一致になる元）', () => {
+  const src = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
+  assert.ok(!/function\s+findPeaks\s*\(/.test(src), 'daily-brief.js は js/score.js の findTidePeaks を使う');
+  assert.ok(src.includes('findTidePeaks'), 'アプリと同じ関数を import しとること');
+});
+
+// ── 台風の最接近と確率の基準時刻（2026-08-24 発覚）────────────────────
+
+test('approachWindow: 予報が粗い区間の谷を1点で断定せず、幅と上限で返す', () => {
+  // 実データ（台風18号ソウデル）。8/25 21:00 までは3時間刻み、その先は24時間刻み
+  const tc = { forecasts: [
+    { validTime: '2026-08-25T18:00:00+09:00', distanceKm: 237 },
+    { validTime: '2026-08-25T21:00:00+09:00', distanceKm: 199 },
+    { validTime: '2026-08-26T21:00:00+09:00', distanceKm: 246 },
+  ]};
+  const w = approachWindow(tc);
+  // 最小の標本(199km)を挟む前後の予報点で区間を作る
+  assert.equal(w.fromTime, '2026-08-25T18:00:00+09:00');
+  assert.equal(w.toTime,   '2026-08-26T21:00:00+09:00');
+  // 標本の最小値は真の最接近以上。切り上げて「◯km以内」＝上限として正しい
+  assert.equal(w.withinKm, 200);
+  assert.equal(w.coarse, true, '24時間刻みを含むので幅の理由を注記する');
+});
+
+test('approachWindow: 3時間刻みで詰まっとる区間は coarse=false', () => {
+  const tc = { forecasts: [
+    { validTime: '2026-08-25T15:00:00+09:00', distanceKm: 281 },
+    { validTime: '2026-08-25T18:00:00+09:00', distanceKm: 237 },
+    { validTime: '2026-08-25T21:00:00+09:00', distanceKm: 250 },
+  ]};
+  assert.equal(approachWindow(tc).coarse, false);
+});
+
+test('approachWindow: 予報が無ければ null（推測で埋めない）', () => {
+  assert.equal(approachWindow({ forecasts: [] }), null);
+  assert.equal(approachWindow(null), null);
+  assert.equal(approachWindow({ forecasts: [{ validTime: 'x', distanceKm: null }] }), null);
+});
+
+test('probabilityCutoffHour: 累積確率の締め時刻をJSTで返す', () => {
+  // 「8/25 17%」は 8/25 21時までの17%。24時までやない
+  assert.equal(probabilityCutoffHour({ probabilityBaseTime: '2026-08-24T21:00:00+09:00' }), 21);
+  // UTC 表記でもJSTに直して返す（15:00Z ＝ 翌0時 JST）
+  assert.equal(probabilityCutoffHour({ probabilityBaseTime: '2026-08-24T15:00:00Z' }), 0);
+  assert.equal(probabilityCutoffHour({}), null);
+  assert.equal(probabilityCutoffHour({ probabilityBaseTime: 'ではない' }), null);
 });

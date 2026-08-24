@@ -100,17 +100,35 @@ export function calendarIcon(score) {
 }
 
 // 潮汐データ（sea_level_height_msl）から満潮・干潮の時刻を検出
+//
+// 頂点が2時間以上フラットになることがある（1時間刻み・小数2桁のため 1.48, 1.48 と並ぶ）。
+// 厳密な > だけで判定すると、そういう満潮は前後どちらの比較でも偽になって
+// 「両方とも」落ちる。2026-08-24 の慶良間は朝(03-04時)と夕(17-18時)の満潮が
+// 揃ってこれに当たり、満潮が1つも出ん日になっとった（上げ潮帯・下げ潮帯も連鎖で消える）。
+// 同じ値の連なりを1つの頂点としてまとめ、中央の時刻を代表にする。
 export function findTidePeaks(times, heights) {
   const peaks = [];
-  for (let i = 1; i < heights.length - 1; i++) {
-    const prev = heights[i - 1];
+  const n = heights.length;
+  let i = 1;
+  while (i < n - 1) {
     const curr = heights[i];
-    const next = heights[i + 1];
-    if (curr > prev && curr > next) {
-      peaks.push({ time: times[i], height: curr, type: 'high' });
-    } else if (curr < prev && curr < next) {
-      peaks.push({ time: times[i], height: curr, type: 'low' });
+    if (!Number.isFinite(curr)) { i++; continue; }
+
+    // 同じ値が続く区間 [i, j] をひとまとめにする
+    let j = i;
+    while (j + 1 < n && heights[j + 1] === curr) j++;
+
+    const prev = heights[i - 1];
+    const next = heights[j + 1];   // j+1 === n のときは undefined（＝末尾は従来どおり採らない）
+    if (Number.isFinite(prev) && Number.isFinite(next)) {
+      const time = times[Math.floor((i + j) / 2)];
+      if (curr > prev && curr > next) {
+        peaks.push({ time, height: curr, type: 'high' });
+      } else if (curr < prev && curr < next) {
+        peaks.push({ time, height: curr, type: 'low' });
+      }
     }
+    i = j + 1;
   }
   return peaks;
 }

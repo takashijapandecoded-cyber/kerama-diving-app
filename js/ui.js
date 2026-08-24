@@ -1,6 +1,7 @@
 import { calcScore, scoreLabel, calendarIcon, findTidePeaks, todayPeaks, tidePeriods, findCurrentHourIndex, warningScoreCap } from './score.js';
 import { getWeatherIcon } from '../assets/weather-icons.js';
 import { CALENDAR_THRESHOLD, DIVE_POINTS } from './config.js';
+import { approachWindow, probabilityCutoffHour } from './typhoon.js';
 
 // SVGリングの円周（r=80）
 const CIRCUMFERENCE = 2 * Math.PI * 80; // ≈ 502.65
@@ -704,6 +705,14 @@ function buildTyphoonDetail(typhoon) {
     </details>`;
 }
 
+// 予報点の時刻ラベル。M/D(曜)HH時
+function tcTimeLabel(iso) {
+  const d = new Date(iso);
+  const date = d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' });
+  const hour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', hour12: false }).format(d);
+  return `${date}${Number(hour)}時`;
+}
+
 // typhoons: fetchTyphoons() の戻り値 / outlook: dailyOutlook() の戻り値
 export function renderTyphoon(result, outlook) {
   const box = document.getElementById('typhoon-card');
@@ -726,15 +735,19 @@ export function renderTyphoon(result, outlook) {
   // 50%を最初に超える日 ＝ 段取りを決める日
   const hit = (outlook ?? []).find(d => d.percent != null && d.percent >= 50);
   const maxPct = typhoon.probabilitySummary?.max ?? 0;
-  const nearest = [typhoon.analysis, ...typhoon.forecasts]
-    .filter(Boolean).reduce((m, b) => (m == null || b.distanceKm < m.distanceKm ? b : m), null);
+  // 累積確率の締めは「その日の24時」やなく基準時刻と同じ時刻。時刻を出さんと1日ずれて読める
+  const cutoff = probabilityCutoffHour(typhoon);
+  const cutoffLabel = cutoff != null ? `${cutoff}時` : '';
 
   const lead = hit
-    ? `${tcDayLabel(hit.date)}までに暴風域に入る確率 ${hit.percent}%`
+    ? `${tcDayLabel(hit.date)}${cutoffLabel}までに暴風域に入る確率 ${hit.percent}%`
     : `4日先までに暴風域に入る確率 最大 ${maxPct}%`;
-  const nearestLine = nearest && !nearest.isAnalysis
-    ? `<br>最も近づくのは ${esc(new Date(nearest.validTime).toLocaleString('ja-JP',
-        { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', weekday: 'short' }))}・${nearest.distanceKm}km`
+  // 最接近は1点で断定せず幅で出す（予報が24時間刻みになる区間で谷を取り逃すため）
+  const win = approachWindow(typhoon);
+  // スマホ幅では折り返すため、文節ごとに nowrap で括る（「接／近」の泣き別れ防止）
+  const nearestLine = win
+    ? `<br><span class="tc-nowrap">${esc(tcTimeLabel(win.fromTime))}〜${esc(tcTimeLabel(win.toTime))}</span> `
+      + `<span class="tc-nowrap">にかけて ${win.withinKm}km以内まで接近</span>`
     : '';
 
   const a = typhoon.analysis;
@@ -754,7 +767,7 @@ export function renderTyphoon(result, outlook) {
         <span class="score-chip" style="background:${maxPct >= 50 ? 'var(--danger)' : 'var(--caution)'}">${maxPct}%</span>
       </div>
       <div class="tc-grid">${cells}</div>
-      <div class="tc-grid-cap">上段＝その日までに暴風域に入る確率（慶良間・粟国諸島）／ 下段＝慶良間沖の最大波高</div>
+      <div class="tc-grid-cap">上段＝その日の${cutoffLabel || '同時刻'}までに暴風域に入る確率（慶良間・粟国諸島）／ 下段＝慶良間沖の最大波高</div>
       <div class="tc-note ${maxPct >= 50 ? 'hot' : ''}">${lead}${nearestLine}</div>
       ${buildTyphoonDetail(typhoon)}
       ${stale ? '<div class="tc-note">⚠️ 気象庁の発表から時間が経っています。最新は気象庁でご確認ください。</div>' : ''}
