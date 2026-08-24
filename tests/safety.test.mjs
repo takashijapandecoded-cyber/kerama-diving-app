@@ -9,7 +9,7 @@ import { calcScore, warningScoreCap, scoreLabel, findCurrentHourIndex,
 import { parseWarnings, feedIsAlive, fetchWarningsViaXml, pickLatestWarningXmlUrl } from '../js/warnings.js';
 import { WARNING_AREAS, DIVE_POINTS } from '../js/config.js';
 import { readFileSync } from 'node:fs';
-import { isWithinWindow } from '../js/notice.js';
+import { isWithinWindow, DISPLAY_FROM, DISPLAY_TO } from '../js/notice.js';
 import { distanceKm, parseSpecifications, parseKeramaProbability,
          summarizeProbability, fetchTyphoons,
          pickPrimary, dailyOutlook, waveMaxByDate,
@@ -208,14 +208,28 @@ test('しきい値が m/s 前提のまま（km/h の値を渡すと極端に低�
 // ── 一度きりのお知らせポップアップ（2026-08-24 の m/s 変更告知）──────
 // 「明日だけ出して明後日には消える」が本当に効くか。日付をまたぐ挙動は
 // 実機で待って確かめられんため、境界値を固定して検証する
-test('お知らせは表示期間の内側だけ true（前日・翌日は false）', () => {
-  assert.equal(isWithinWindow('2026-08-23'), false, '前日に出とる');
-  assert.equal(isWithinWindow('2026-08-24'), true,  '当日に出とらん');
-  assert.equal(isWithinWindow('2026-08-25'), false, '翌日に出とる（消え残り）');
-  // 期間を延ばした場合も両端を含む
-  assert.equal(isWithinWindow('2026-08-24', '2026-08-24', '2026-08-26'), true);
-  assert.equal(isWithinWindow('2026-08-26', '2026-08-24', '2026-08-26'), true);
-  assert.equal(isWithinWindow('2026-08-27', '2026-08-24', '2026-08-26'), false);
+test('お知らせは表示期間の内側だけ true（開始前・終了後は false）', () => {
+  // 純関数としての境界。期間を明示して固定値で検証する（設定値に引きずられんように）
+  const W = ['2026-08-24', '2026-08-31'];
+  assert.equal(isWithinWindow('2026-08-23', ...W), false, '開始前に出とる');
+  assert.equal(isWithinWindow('2026-08-24', ...W), true,  '開始日に出とらん');
+  assert.equal(isWithinWindow('2026-08-27', ...W), true,  '期間の途中で出とらん');
+  assert.equal(isWithinWindow('2026-08-31', ...W), true,  '最終日に出とらん');
+  assert.equal(isWithinWindow('2026-09-01', ...W), false, '期間を過ぎても出とる（消え残り）');
+});
+
+test('いま設定されとる期間が、両端を含んで効いとる', () => {
+  assert.equal(isWithinWindow(DISPLAY_FROM), true, '開始日に出とらん');
+  assert.equal(isWithinWindow(DISPLAY_TO),   true, '最終日に出とらん');
+  const dayAfter = new Date(new Date(`${DISPLAY_TO}T00:00:00Z`).getTime() + 86400000)
+    .toISOString().slice(0, 10);
+  assert.equal(isWithinWindow(dayAfter), false, '最終日の翌日に消えとらん');
+});
+
+test('お知らせの期間はアプリとメールで同じ（日付を2箇所に持たない）', () => {
+  const src = readFileSync(new URL('../notify/daily-brief.js', import.meta.url), 'utf8');
+  assert.ok(!/NOTICE_DATE\s*=/.test(src), 'メール側に別の日付定数を持たせない');
+  assert.ok(src.includes('isWithinWindow'), 'js/notice.js の期間判定を共用すること');
 });
 
 // ── 台風情報（2026-08-23 追加）─────────────────────────────

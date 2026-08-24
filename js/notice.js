@@ -9,9 +9,16 @@
 // 次に別のお知らせを出すときは NOTICE_ID を必ず変えること
 // （同じIDのままやと、前回×を押した人には表示されん）。
 
-const NOTICE_ID    = 'wind-unit-ms-2026-08';
-const DISPLAY_FROM = '2026-08-24';   // この日から（JST・当日を含む）
-const DISPLAY_TO   = '2026-08-24';   // この日まで（JST・当日を含む）。延ばすならここだけ変える
+const NOTICE_ID = 'wind-unit-ms-2026-08';
+
+// 表示期間（JST・両端を含む）。アプリもメールもここだけを見る。
+//
+// 当初は 8/24 の1日だけやったが、8/25〜8/26 が台風18号の本番で優くんが
+// 出港できず、アプリもメールも見とらん可能性が高いと判断して 8/31 まで延長した
+// （2026-08-24）。×を押した人には localStorage の記録で二度と出んけん、
+// 既に見た人には無害。
+export const DISPLAY_FROM = '2026-08-24';
+export const DISPLAY_TO   = '2026-08-31';
 
 const STORAGE_KEY = `diving_notice_${NOTICE_ID}`;
 

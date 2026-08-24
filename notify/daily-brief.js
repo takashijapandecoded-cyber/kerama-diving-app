@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DIVE_POINTS } from '../js/config.js';
 import { calcScore, findCurrentHourIndex, warningScoreCap, calendarIcon, findTidePeaks, tidePeriods } from '../js/score.js'; // アプリと同一ロジック（重複コピー禁止・不一致バグ再発防止）
 import { parseWarnings, fetchWarningsViaXml } from '../js/warnings.js'; // 警報・注意報の取得・解析もアプリと共用
+import { isWithinWindow } from '../js/notice.js'; // お知らせの表示期間もアプリと共用（日付は notice.js が唯一の正）
 import { fetchTyphoons, pickPrimary, dailyOutlook, waveMaxByDate, approachWindow, probabilityCutoffHour } from '../js/typhoon.js'; // 台風もアプリと同じ判定を使う
 
 // ── 設定（GitHub Secrets から環境変数で渡す） ──────────────
@@ -139,10 +140,11 @@ function fmtTime(isoStr) { return isoStr.slice(11, 16); }
 // ── 一度きりのお知らせ（アプリ側の js/notice.js とセット）──────────
 // 朝5時のメールの方がアプリより先に優くんの目に入るため、同じ日だけ本文にも1行入れる。
 // この日を過ぎたら自動で消える。役目が終わったらこのブロックごと消してよい
-const NOTICE_DATE = '2026-08-24';   // js/notice.js の DISPLAY_FROM / DISPLAY_TO と揃えること
+// 期間の判定も日付もアプリ側 js/notice.js のものを使う（定数を2箇所に持たない）。
+// 日付を変えるときは js/notice.js の DISPLAY_FROM / DISPLAY_TO だけを直せばええ
 function unitNoticeFor(todayStr) {
-  if (todayStr !== NOTICE_DATE) return '';
-  return '\n💨 お知らせ: 今日から風速の表示を km/h → m/s に変更しました' +
+  if (!isWithinWindow(todayStr)) return '';
+  return '\n💨 お知らせ: 8/24から、風速の表示を km/h → m/s に変更しています' +
          '（気象庁・船舶の標準単位。例: 18km/h ＝ 5.0m/s）。' +
          '\n　 数値の見た目が変わるだけで、スコアの計算方法は変わっていません。\n';
 }
